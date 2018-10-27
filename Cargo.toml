@@ -3,6 +3,17 @@ name = "rand_regex"
 version = "0.11.0"
 authors = ["kennytm <kennytm@gmail.com>"]
 description = "Generates random strings and byte strings matching a regex"
+repository = "https://github.com/kennytm/rand_regex"
+readme = "README.md"
+keywords = ["regex", "random", "generator"]
+categories = ["algorithms", "text-processing"]
+license = "MIT"
+
+[badges]
+travis-ci = { repository = "kennytm/rand_regex", branch = "master" }
+is-it-maintained-issue-resolution = { repository = "kennytm/rand_regex" }
+is-it-maintained-open-issues = { repository = "kennytm/rand_regex" }
+maintenance = { status = "passively-maintained" }
 
 [dependencies]
 rand = "0.5"
