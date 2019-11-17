@@ -7,33 +7,36 @@
 //! extern crate rand_regex;
 //! extern crate regex_syntax;
 //! extern crate rand;
+//! extern crate rand_xorshift;
+//! # #[cfg(feature = "unicode")] {
 //! use rand::{SeedableRng, Rng};
 //!
-//! let mut rng = rand::prng::XorShiftRng::from_seed(*b"The initial seed");
+//! let mut rng = rand_xorshift::XorShiftRng::from_seed(*b"The initial seed");
 //!
 //! // creates a generator for sampling strings
 //! let gen = rand_regex::Regex::compile(r"\d{4}-\d{2}-\d{2}", 100).unwrap();
 //!
 //! // sample a few strings randomly
-//! let samples = rng.sample_iter(&gen).take(3).collect::<Vec<String>>();
+//! let samples = (&mut rng).sample_iter(&gen).take(3).collect::<Vec<String>>();
 //!
 //! // all Unicode characters are included when sampling
 //! assert_eq!(samples, vec![
-//!     "១५᥏꣒-૨٩-٨𑁩".to_string(),
-//!     "႘꘦൩᥌-꧶߉-8၀".to_string(),
-//!     "௨൫𑣦០-𖭔༡-෩༤".to_string(),
+//!     "៧७᧗꤂-૪۰-٩𑃶".to_string(),
+//!     "៤꣖൭᧓-꩗१-9၅".to_string(),
+//!     "௫൯𑵒៦-𝟚༧-෮༩".to_string(),
 //! ]);
 //!
 //! // you could use `regex_syntax::Hir` to include more options
 //! let mut parser = regex_syntax::ParserBuilder::new().unicode(false).build();
 //! let hir = parser.parse(r"\d{4}-\d{2}-\d{2}").unwrap();
 //! let gen = rand_regex::Regex::with_hir(hir, 100).unwrap();
-//! let samples = rng.sample_iter(&gen).take(3).collect::<Vec<String>>();
+//! let samples = (&mut rng).sample_iter(&gen).take(3).collect::<Vec<String>>();
 //! assert_eq!(samples, vec![
 //!     "5786-30-81".to_string(),
 //!     "4990-38-85".to_string(),
 //!     "4514-20-35".to_string(),
 //! ]);
+//! # }
 //! ```
 
 extern crate rand;
@@ -72,6 +75,7 @@ pub enum Error {
     /// extern crate rand_regex;
     /// extern crate regex;
     /// extern crate rand;
+    /// # #[cfg(feature = "unicode")] {
     /// use rand::Rng;
     ///
     /// // create the generator without the anchor
@@ -84,6 +88,7 @@ pub enum Error {
     ///     .filter(|s| filter_regex.is_match(s))
     ///     .next()
     ///     .unwrap();
+    /// # }
     /// ```
     Anchor,
 
@@ -221,11 +226,13 @@ impl Regex {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "unicode")] {
     /// extern crate rand_regex;
     ///
     /// let gen = rand_regex::Regex::compile(r"\d{4}-\d{2}-\d{2}", 100).unwrap();
     /// assert_eq!(gen.capacity(), 34);
     /// // each `\d` can occupy 4 bytes
+    /// # }
     /// ```
     #[inline]
     pub fn capacity(&self) -> usize {
@@ -620,7 +627,7 @@ mod test {
     extern crate regex;
 
     use super::*;
-    use rand::{rngs::SmallRng, FromEntropy};
+    use rand::thread_rng;
     use std::collections::HashSet;
     use std::ops::RangeInclusive;
 
@@ -629,10 +636,10 @@ mod test {
         let gen = Regex::compile(pattern, 100).unwrap();
         assert!(gen.is_utf8());
 
-        let mut rng = SmallRng::from_entropy();
+        let mut rng = thread_rng();
 
         let mut gen_set = HashSet::<String>::with_capacity(run_count.min(*distinct_count.end()));
-        for res in gen.sample_iter(&mut rng).take(run_count) {
+        for res in (&gen).sample_iter(&mut rng).take(run_count) {
             let res: String = res;
             assert!(res.len() <= gen.capacity());
             assert!(
@@ -700,7 +707,6 @@ mod test {
     #[test]
     fn test_proptest() {
         check_str_limited("foo", 1);
-        check_str_limited("(?i:fOo)", 8);
         check_str_limited("foo|bar|baz", 3);
         check_str_limited("a{0,8}", 9);
         check_str_limited("a?", 2);
@@ -708,7 +714,6 @@ mod test {
         check_str_limited("a+", 101);
         check_str_limited("a{4,}", 101);
         check_str_limited("(foo|bar)(xyzzy|plugh)", 4);
-        check_str_limited("(?i:a|B)", 4);
         check_str_unlimited(".", 3489);
         check_str_unlimited("(?s).", 3489);
     }
@@ -722,6 +727,13 @@ mod test {
         check_str_limited("a{3}", 1);
         check_str_limited("(abcde)", 1);
         check_str_limited("a?b?", 4);
+    }
+
+    #[test]
+    #[cfg(feature = "unicode")]
+    fn test_unicode_cases() {
+        check_str_limited("(?i:fOo)", 8);
+        check_str_limited("(?i:a|B)", 4);
         check_str_unlimited(r"(\p{Greek}\P{Greek})(?:\d{3,6})", 4096);
     }
 
@@ -730,7 +742,7 @@ mod test {
         check_str_limited("[[:alnum:]]", 62);
         check_str_limited("[[:alpha:]]", 52);
         check_str_limited("[[:ascii:]]", 128);
-        // check_str_limited("[[:blank:]]", 2); // https://github.com/rust-lang/regex/issues/533
+        check_str_limited("[[:blank:]]", 2);
         check_str_limited("[[:cntrl:]]", 33);
         check_str_limited("[[:digit:]]", 10);
         check_str_limited("[[:graph:]]", 94);
@@ -744,11 +756,12 @@ mod test {
     }
 
     #[test]
+    #[cfg(feature = "unicode")]
     fn test_unicode_character_classes() {
         check_str_unlimited(r"\p{L}", 3224);
-        check_str(r"\p{M}", 1615..=2233, 4096);
-        check_str(r"\p{N}", 1371..=1653, 4096);
-        check_str(r"\p{P}", 768..=788, 4096);
+        check_str(r"\p{M}", 1627..=2268, 4096);
+        check_str(r"\p{N}", 1420..=1754, 4096);
+        check_str(r"\p{P}", 772..=792, 4096);
         check_str_unlimited(r"\p{S}", 2355);
         check_str_limited(r"\p{Z}", 19);
         check_str_unlimited(r"\p{C}", 3478);
@@ -763,6 +776,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(feature = "unicode")]
     fn test_unicode_script_classes() {
         check_str(r"\p{Latin}", 1202..=1353, 4096);
         check_str(r"\p{Greek}", 512..=518, 4096);
@@ -772,22 +786,23 @@ mod test {
         check_str(r"\p{Arabic}", 1156..=1281, 4096);
         check_str_limited(r"\p{Syriac}", 88);
         check_str_limited(r"\p{Thaana}", 50);
-        check_str_limited(r"\p{Devanagari}", 156);
+        check_str_limited(r"\p{Devanagari}", 154);
         check_str_limited(r"\p{Bengali}", 96);
         check_str_limited(r"\p{Gurmukhi}", 80);
         check_str_limited(r"\p{Gujarati}", 91);
         check_str_limited(r"\p{Oriya}", 90);
-        check_str_limited(r"\p{Tamil}", 72);
+        check_str_limited(r"\p{Tamil}", 123);
         check_str_unlimited(r"\p{Hangul}", 2585);
-        check_str(r"\p{Hiragana}", 373..=376, 4096);
-        check_str(r"\p{Katakana}", 298..=300, 4096);
+        check_str(r"\p{Hiragana}", 376..=379, 4096);
+        check_str(r"\p{Katakana}", 302..=304, 4096);
         check_str_unlimited(r"\p{Han}", 3163);
         check_str_limited(r"\p{Tagalog}", 20);
         check_str_limited(r"\p{Linear_B}", 211);
-        check_str(r"\p{Inherited}", 562..=569, 4096);
+        check_str(r"\p{Inherited}", 564..=571, 4096);
     }
 
     #[test]
+    #[cfg(feature = "unicode")]
     fn test_perl_classes() {
         check_str_unlimited(r"\d+", 4046);
         check_str_unlimited(r"\D+", 4085);
@@ -838,7 +853,7 @@ mod test {
         assert_eq!(gen.capacity(), 24);
         assert!(!gen.is_utf8());
 
-        let mut rng = SmallRng::from_entropy();
+        let mut rng = thread_rng();
         for res in gen.sample_iter(&mut rng).take(8192) {
             let res: Vec<u8> = res;
             assert!(r.is_match(&res), "Wrong sample: {:?}, `{:?}`", r, res);
@@ -858,7 +873,7 @@ mod test {
         let gen = Regex::with_hir(hir, 100).unwrap();
         assert!(!gen.is_utf8());
 
-        let mut rng = SmallRng::from_entropy();
+        let mut rng = thread_rng();
         let _: String = rng.sample(&gen);
     }
 }
