@@ -4,10 +4,6 @@
 //! Generates strings are byte strings following rule of a regular expression.
 //!
 //! ```
-//! extern crate rand_regex;
-//! extern crate regex_syntax;
-//! extern crate rand;
-//! extern crate rand_xorshift;
 //! # #[cfg(feature = "unicode")] {
 //! use rand::{SeedableRng, Rng};
 //!
@@ -39,8 +35,8 @@
 //! # }
 //! ```
 
-extern crate rand;
-extern crate regex_syntax;
+// Allowing this until min Rust version is >=1.37.
+#![allow(clippy::use_self)]
 
 use rand::distributions::uniform::{SampleUniform, Uniform};
 use rand::distributions::Distribution;
@@ -58,8 +54,6 @@ use std::ops::{Add, Sub};
 /// # Examples
 ///
 /// ```
-/// extern crate rand_regex;
-///
 /// let gen = rand_regex::Regex::compile(r"^.{4}\b.{4}$", 100);
 /// assert_eq!(gen.err(), Some(rand_regex::Error::Anchor));
 /// ```
@@ -72,9 +66,6 @@ pub enum Error {
     /// sampling e.g.
     ///
     /// ```rust
-    /// extern crate rand_regex;
-    /// extern crate regex;
-    /// extern crate rand;
     /// # #[cfg(feature = "unicode")] {
     /// use rand::Rng;
     ///
@@ -172,8 +163,6 @@ impl Default for Regex {
     /// # Examples
     ///
     /// ```
-    /// extern crate rand_regex;
-    /// extern crate rand;
     /// use rand::Rng;
     ///
     /// let gen = rand_regex::Regex::default();
@@ -195,9 +184,6 @@ impl Regex {
     /// # Examples
     ///
     /// ```
-    /// extern crate rand_regex;
-    /// extern crate regex_syntax;
-    ///
     /// let utf8_hir = regex_syntax::ParserBuilder::new()
     ///     .unicode(false)
     ///     .allow_invalid_utf8(true)
@@ -217,7 +203,7 @@ impl Regex {
     /// assert_eq!(non_utf8_gen.is_utf8(), false);
     /// ```
     #[inline]
-    pub fn is_utf8(&self) -> bool {
+    pub const fn is_utf8(&self) -> bool {
         self.is_utf8
     }
 
@@ -227,15 +213,13 @@ impl Regex {
     ///
     /// ```
     /// # #[cfg(feature = "unicode")] {
-    /// extern crate rand_regex;
-    ///
     /// let gen = rand_regex::Regex::compile(r"\d{4}-\d{2}-\d{2}", 100).unwrap();
     /// assert_eq!(gen.capacity(), 34);
     /// // each `\d` can occupy 4 bytes
     /// # }
     /// ```
     #[inline]
-    pub fn capacity(&self) -> usize {
+    pub const fn capacity(&self) -> usize {
         self.capacity
     }
 
@@ -248,8 +232,6 @@ impl Regex {
     /// the `x*`, `x+` and `x{n,}` operators will become, e.g.
     ///
     /// ```
-    /// extern crate rand_regex;
-    ///
     /// let gen = rand_regex::Regex::compile("a{4,}", 100).unwrap();
     /// // this will generate a string between 4 to 104 characters long.
     /// assert_eq!(gen.capacity(), 104);
@@ -624,8 +606,6 @@ where
 
 #[cfg(test)]
 mod test {
-    extern crate regex;
-
     use super::*;
     use rand::thread_rng;
     use std::collections::HashSet;

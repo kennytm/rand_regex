@@ -11,10 +11,6 @@ Examples
 --------
 
 ```rust
-extern crate rand_regex;
-extern crate regex_syntax;
-extern crate rand;
-extern crate rand_xorshift;
 use rand::{SeedableRng, Rng};
 
 let mut rng = rand_xorshift::XorShiftRng::from_seed(*b"The initial seed");
