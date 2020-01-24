@@ -23,9 +23,9 @@ let samples = (&mut rng).sample_iter(&gen).take(3).collect::<Vec<String>>();
 
 // all Unicode characters are included when sampling
 assert_eq!(samples, vec![
-    "៧७᧗꤂-૪۰-٩𑃶".to_string(),
-    "៤꣖൭᧓-꩗१-9၅".to_string(),
-    "௫൯𑵒៦-𝟚༧-෮༩".to_string(),
+    "᱃៧७᧗-꤂႔-૪۰".to_string(),
+    "𝟽٩𑃶᱒-៤꣖-൭᧓".to_string(),
+    "𑃰꩗१௭-9၅-६௫".to_string(),
 ]);
 
 // you could use `regex_syntax::Hir` to include more options
@@ -34,9 +34,9 @@ let hir = parser.parse(r"\d{4}-\d{2}-\d{2}").unwrap();
 let gen = rand_regex::Regex::with_hir(hir, 100).unwrap();
 let samples = (&mut rng).sample_iter(&gen).take(3).collect::<Vec<String>>();
 assert_eq!(samples, vec![
-    "5786-30-81".to_string(),
-    "4990-38-85".to_string(),
-    "4514-20-35".to_string(),
+    "8922-87-63".to_string(),
+    "3149-18-88".to_string(),
+    "5420-58-55".to_string(),
 ]);
 ```
 
@@ -45,6 +45,5 @@ Acknowledgement
 
 `rand_regex` is heavily inspired by [`regex_generate`] and [`proptest`].
 
-[rand::Distribution]: https://docs.rs/rand/*/rand/distributions/trait.Distribution.html
 [`regex_generate`]: https://crates.io/crates/regex_generate
 [`proptest`]: https://crates.io/crates/proptest
