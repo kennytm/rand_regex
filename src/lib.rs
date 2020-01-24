@@ -27,25 +27,27 @@
 //! let gen = rand_regex::Regex::with_hir(hir, 100).unwrap();
 //! let samples = (&mut rng).sample_iter(&gen).take(3).collect::<Vec<String>>();
 //! assert_eq!(samples, vec![
-//!     "2839-82-12".to_string(),
-//!     "2857-86-63".to_string(),
-//!     "0381-04-99".to_string(),
+//!     "8922-87-63".to_string(),
+//!     "3149-18-88".to_string(),
+//!     "5420-58-55".to_string(),
 //! ]);
 //! # }
 //! ```
 
 #![allow(clippy::must_use_candidate)]
 
-use rand::distributions::uniform::{SampleUniform, Uniform};
+use rand::distributions::uniform::Uniform;
 use rand::distributions::Distribution;
 use rand::Rng;
 use regex_syntax::hir::{self, ClassBytes, ClassUnicode, Hir, HirKind, Repetition};
 use regex_syntax::Parser;
+use std::borrow::Borrow;
 use std::char;
 use std::error;
 use std::fmt::{self, Debug};
 use std::mem;
-use std::ops::{Add, Sub};
+
+const SHORT_UNICODE_CLASS_COUNT: usize = 64;
 
 /// Error returned by [`Regex::compile()`] and [`Regex::with_hir()`].
 ///
@@ -293,9 +295,9 @@ impl Regex {
             let ranges = class
                 .iter()
                 .map(|uc| hir::ClassBytesRange::new(uc.start() as u8, uc.end() as u8));
-            Kind::ByteClass(compile_class(ranges))
+            Kind::ByteClass(ByteClass::compile(ranges))
         } else {
-            Kind::UnicodeClass(compile_class(class.iter()))
+            compile_unicode_class(class.ranges())
         };
         Self {
             compiled: kind.into(),
@@ -305,16 +307,10 @@ impl Regex {
     }
 
     fn with_byte_class(class: &ClassBytes) -> Self {
-        let is_utf8 = class
-            .iter()
-            .last()
-            .expect("at least 1 interval")
-            .end()
-            .is_ascii();
         Self {
-            compiled: Kind::ByteClass(compile_class(class.iter())).into(),
+            compiled: Kind::ByteClass(ByteClass::compile(class.iter())).into(),
             capacity: 1,
-            is_utf8,
+            is_utf8: class.is_all_ascii(),
         }
     }
 
@@ -481,8 +477,9 @@ enum Kind {
         index: Uniform<usize>,
         choices: Vec<Compiled>,
     },
-    UnicodeClass(CompiledClass<u32>),
-    ByteClass(CompiledClass<u8>),
+    LongUnicodeClass(LongUnicodeClass),
+    ShortUnicodeClass(ShortUnicodeClass),
+    ByteClass(ByteClass),
 }
 
 impl Default for Kind {
@@ -517,7 +514,8 @@ impl<'a, R: Rng + ?Sized + 'a> EvalCtx<'a, R> {
             Kind::Literal(lit) => self.eval_literal(count, lit),
             Kind::Sequence(seq) => self.eval_sequence(count, seq),
             Kind::Any { index, choices } => self.eval_alt(count, index, choices),
-            Kind::UnicodeClass(class) => self.eval_unicode_class(count, class),
+            Kind::LongUnicodeClass(class) => self.eval_unicode_class(count, class),
+            Kind::ShortUnicodeClass(class) => self.eval_unicode_class(count, class),
             Kind::ByteClass(class) => self.eval_byte_class(count, class),
         }
     }
@@ -543,142 +541,120 @@ impl<'a, R: Rng + ?Sized + 'a> EvalCtx<'a, R> {
         }
     }
 
-    fn eval_unicode_class(&mut self, count: u32, class: &CompiledClass<u32>) {
+    fn eval_unicode_class(&mut self, count: u32, class: &impl Distribution<char>) {
         let mut buf = [0; 4];
-        for value in class.sample_iter(&mut self.rng).take(count as usize) {
-            let c = char::from_u32(value).expect("valid char");
+        for c in class.sample_iter(&mut self.rng).take(count as usize) {
             let bytes = c.encode_utf8(&mut buf).as_bytes();
             self.output.extend_from_slice(bytes);
         }
     }
 
-    fn eval_byte_class(&mut self, count: u32, class: &CompiledClass<u8>) {
+    fn eval_byte_class(&mut self, count: u32, class: &ByteClass) {
         self.output
-            .extend(class.sample_iter(&mut self.rng).take(count as usize));
+            .extend(self.rng.sample_iter(class).take(count as usize));
     }
 }
 
-/// A compiled character class
+/// A compiled Unicode class of more than 64 ranges.
 #[derive(Clone, Debug)]
-struct CompiledClass<T: SampleUniform>
-where
-    T::Sampler: Clone + Debug,
-{
-    searcher: Uniform<T>,
-    ranges: Vec<(T, T)>,
+struct LongUnicodeClass {
+    searcher: Uniform<u32>,
+    ranges: Box<[(u32, u32)]>,
 }
 
-impl<T> Distribution<T> for CompiledClass<T>
-where
-    T: ClassItem,
-    T::Sampler: Clone + Debug,
-{
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
+impl Distribution<char> for LongUnicodeClass {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> char {
         let normalized_index = self.searcher.sample(rng);
         let entry_index = self
             .ranges
             .binary_search_by(|(normalized_start, _)| normalized_start.cmp(&normalized_index))
             .unwrap_or_else(|e| e - 1);
-        normalized_index + self.ranges[entry_index].1
+        let code = normalized_index + self.ranges[entry_index].1;
+        char::from_u32(code).expect("valid char")
     }
 }
 
-/// A single range in a character class.
-trait ClassRange {
-    /// The integer type produced by the range.
-    type Item: SampleUniform;
-    /// The invalid range (**exclusive on both ends**) which should never be
-    /// generated, e.g. the surrogate code points.
-    fn invalid_range() -> Option<(Self::Item, Self::Item)>;
-    /// The start and end value of the range (inclusive on both ends).
-    fn bounds(&self) -> (Self::Item, Self::Item);
+/// A compiled Unicode class of less than or equals to 64 ranges.
+#[derive(Clone, Debug)]
+struct ShortUnicodeClass {
+    index: Uniform<usize>,
+    cases: Box<[char]>,
 }
 
-impl ClassRange for hir::ClassUnicodeRange {
-    type Item = u32;
-    fn invalid_range() -> Option<(Self::Item, Self::Item)> {
-        Some((0xd7ff, 0xe000))
-    }
-    fn bounds(&self) -> (Self::Item, Self::Item) {
-        (self.start().into(), self.end().into())
+impl Distribution<char> for ShortUnicodeClass {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> char {
+        self.cases[self.index.sample(rng)]
     }
 }
 
-impl ClassRange for hir::ClassBytesRange {
-    type Item = u8;
-    fn invalid_range() -> Option<(Self::Item, Self::Item)> {
-        None
-    }
-    fn bounds(&self) -> (Self::Item, Self::Item) {
-        (self.start(), self.end())
-    }
-}
-
-impl<'a, C: ClassRange + ?Sized + 'a> ClassRange for &'a C {
-    type Item = C::Item;
-    fn invalid_range() -> Option<(Self::Item, Self::Item)> {
-        C::invalid_range()
-    }
-    fn bounds(&self) -> (Self::Item, Self::Item) {
-        (**self).bounds()
-    }
-}
-
-trait ClassItem: Add<Output = Self> + Sub<Output = Self> + SampleUniform + Copy + Ord {
-    const ZERO: Self;
-    const NEG_ONE: Self;
-    fn wrapping_inc(self) -> Self;
-}
-
-impl ClassItem for u8 {
-    const ZERO: Self = 0;
-    const NEG_ONE: Self = !0;
-    fn wrapping_inc(self) -> Self {
-        self.wrapping_add(1)
-    }
-}
-
-impl ClassItem for u32 {
-    const ZERO: Self = 0;
-    const NEG_ONE: Self = !0;
-    fn wrapping_inc(self) -> Self {
-        self.wrapping_add(1)
-    }
-}
-
-fn compile_class<C, I>(ranges: I) -> CompiledClass<C::Item>
-where
-    I: Iterator<Item = C>,
-    C: ClassRange,
-    C::Item: ClassItem,
-    <C::Item as SampleUniform>::Sampler: Clone + Debug,
-{
-    let mut normalized_ranges = Vec::new();
-    let mut normalized_len_minus_1 = C::Item::NEG_ONE;
-
-    {
-        let mut push = |start, end| {
-            let normalized_len = normalized_len_minus_1.wrapping_inc();
-            normalized_ranges.push((normalized_len, start - normalized_len));
-            normalized_len_minus_1 = end - start + normalized_len;
-        };
-
-        for r in ranges {
-            let (start, end) = r.bounds();
-            if let Some((invalid_start, invalid_end)) = C::invalid_range() {
-                if start <= invalid_start && invalid_end <= end {
-                    push(start, invalid_start);
-                    push(invalid_end, end);
-                    continue;
-                }
-            }
+fn compile_unicode_class_with(ranges: &[hir::ClassUnicodeRange], mut push: impl FnMut(char, char)) {
+    for range in ranges {
+        let start = range.start();
+        let end = range.end();
+        if start <= '\u{d7ff}' && '\u{e000}' <= end {
+            push(start, '\u{d7ff}');
+            push('\u{e000}', end);
+        } else {
             push(start, end);
         }
     }
+}
 
-    CompiledClass {
-        searcher: Uniform::new_inclusive(C::Item::ZERO, normalized_len_minus_1),
-        ranges: normalized_ranges,
+fn compile_unicode_class(ranges: &[hir::ClassUnicodeRange]) -> Kind {
+    let mut normalized_ranges = Vec::new();
+    let mut normalized_len = 0;
+    compile_unicode_class_with(ranges, |start, end| {
+        let start = u32::from(start);
+        let end = u32::from(end);
+        normalized_ranges.push((normalized_len, start - normalized_len));
+        normalized_len += end - start + 1;
+    });
+
+    if normalized_len as usize > SHORT_UNICODE_CLASS_COUNT {
+        return Kind::LongUnicodeClass(LongUnicodeClass {
+            searcher: Uniform::new(0, normalized_len),
+            ranges: normalized_ranges.into_boxed_slice(),
+        });
+    }
+
+    // the number of cases is too small. convert into a direct search array.
+    let mut cases = Vec::with_capacity(normalized_len as usize);
+    compile_unicode_class_with(ranges, |start, end| {
+        for c in u32::from(start)..=u32::from(end) {
+            cases.push(char::from_u32(c).expect("valid char"));
+        }
+    });
+
+    Kind::ShortUnicodeClass(ShortUnicodeClass {
+        index: Uniform::new(0, cases.len()),
+        cases: cases.into_boxed_slice(),
+    })
+}
+
+/// A compiled byte class.
+#[derive(Clone, Debug)]
+struct ByteClass {
+    index: Uniform<usize>,
+    cases: Box<[u8]>,
+}
+
+impl ByteClass {
+    pub fn compile(ranges: impl IntoIterator<Item = impl Borrow<hir::ClassBytesRange>>) -> Self {
+        let mut cases = Vec::with_capacity(256);
+        for range in ranges {
+            let range = range.borrow();
+            cases.extend(range.start()..=range.end());
+        }
+        Self {
+            index: Uniform::new(0, cases.len()),
+            cases: cases.into_boxed_slice(),
+        }
+    }
+}
+
+impl Distribution<u8> for ByteClass {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> u8 {
+        self.cases[self.index.sample(rng)]
     }
 }
 
