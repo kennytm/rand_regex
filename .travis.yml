@@ -4,7 +4,7 @@ language: rust
 jobs:
   include:
     - os: linux
-      rust: 1.32.0
+      rust: 1.40.0
     - os: linux
       rust: nightly
     - os: linux
