@@ -16,9 +16,9 @@
 //!
 //! // all Unicode characters are included when sampling
 //! assert_eq!(samples, vec![
-//!     "៧७᧗꤂-૪۰-٩𑃶".to_string(),
-//!     "៤꣖൭᧓-꩗१-9၅".to_string(),
-//!     "௫൯𑵒៦-𝟚༧-෮༩".to_string(),
+//!     "᱃៧७᧗-꤂႔-૪۰".to_string(),
+//!     "𝟽٩𑃶᱒-៤꣖-൭᧓".to_string(),
+//!     "𑃰꩗१௭-9၅-६௫".to_string(),
 //! ]);
 //!
 //! // you could use `regex_syntax::Hir` to include more options
@@ -27,9 +27,9 @@
 //! let gen = rand_regex::Regex::with_hir(hir, 100).unwrap();
 //! let samples = (&mut rng).sample_iter(&gen).take(3).collect::<Vec<String>>();
 //! assert_eq!(samples, vec![
-//!     "5786-30-81".to_string(),
-//!     "4990-38-85".to_string(),
-//!     "4514-20-35".to_string(),
+//!     "2839-82-12".to_string(),
+//!     "2857-86-63".to_string(),
+//!     "0381-04-99".to_string(),
 //! ]);
 //! # }
 //! ```
@@ -44,6 +44,7 @@ use regex_syntax::Parser;
 use std::char;
 use std::error;
 use std::fmt::{self, Debug};
+use std::mem;
 use std::ops::{Add, Sub};
 
 /// Error returned by [`Regex::compile()`] and [`Regex::with_hir()`].
@@ -129,9 +130,12 @@ pub struct Regex {
 impl Distribution<Vec<u8>> for Regex {
     /// Samples a random byte string satisfying the regex.
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Vec<u8> {
-        let mut output = Vec::with_capacity(self.capacity);
-        self.compiled.eval_into(rng, &mut output);
-        output
+        let mut ctx = EvalCtx {
+            output: Vec::with_capacity(self.capacity),
+            rng,
+        };
+        ctx.eval(&self.compiled);
+        ctx.output
     }
 }
 
@@ -168,7 +172,7 @@ impl Default for Regex {
     #[inline]
     fn default() -> Self {
         Self {
-            compiled: Compiled::Literal(Vec::new()),
+            compiled: Compiled::default(),
             capacity: 0,
             is_utf8: true,
         }
@@ -252,55 +256,55 @@ impl Regex {
 
             HirKind::Literal(hir::Literal::Unicode(c)) => Ok(Self::with_unicode_literal(c)),
             HirKind::Literal(hir::Literal::Byte(b)) => Ok(Self::with_byte_literal(b)),
-            HirKind::Class(hir::Class::Unicode(class)) => Ok(Self::with_unicode_class(class)),
-            HirKind::Class(hir::Class::Bytes(class)) => Ok(Self::with_byte_class(class)),
+            HirKind::Class(hir::Class::Unicode(class)) => Ok(Self::with_unicode_class(&class)),
+            HirKind::Class(hir::Class::Bytes(class)) => Ok(Self::with_byte_class(&class)),
             HirKind::Repetition(rep) => Self::with_repetition(rep, max_repeat),
-            HirKind::Concat(hirs) => Self::with_hirs_concatenated(hirs, max_repeat),
-            HirKind::Alternation(hirs) => Self::with_hirs_alternations(hirs, max_repeat),
+            HirKind::Concat(hirs) => Self::with_sequence(hirs, max_repeat),
+            HirKind::Alternation(hirs) => Self::with_choices(hirs, max_repeat),
         }
     }
 
     fn with_unicode_literal(c: char) -> Self {
         let mut buf = [0_u8; 4];
-        let len = c.encode_utf8(&mut buf).len();
+        let string = c.encode_utf8(&mut buf);
         Self {
-            compiled: Compiled::Literal(buf[..len].to_owned()),
-            capacity: len,
+            compiled: Kind::Literal(string.as_bytes().to_owned()).into(),
+            capacity: string.len(),
             is_utf8: true,
         }
     }
 
     fn with_byte_literal(b: u8) -> Self {
         Self {
-            compiled: Compiled::Literal(vec![b]),
+            compiled: Kind::Literal(vec![b]).into(),
             capacity: 1,
             is_utf8: b.is_ascii(),
         }
     }
 
-    fn with_unicode_class(class: ClassUnicode) -> Self {
+    fn with_unicode_class(class: &ClassUnicode) -> Self {
         let capacity = class
             .iter()
             .last()
             .expect("at least 1 interval")
             .end()
             .len_utf8();
-        let compiled = if capacity == 1 {
+        let kind = if capacity == 1 {
             let ranges = class
                 .iter()
                 .map(|uc| hir::ClassBytesRange::new(uc.start() as u8, uc.end() as u8));
-            Compiled::ByteClass(compile_class(ranges))
+            Kind::ByteClass(compile_class(ranges))
         } else {
-            Compiled::UnicodeClass(compile_class(class.iter()))
+            Kind::UnicodeClass(compile_class(class.iter()))
         };
         Self {
-            compiled,
+            compiled: kind.into(),
             capacity,
             is_utf8: true,
         }
     }
 
-    fn with_byte_class(class: ClassBytes) -> Self {
+    fn with_byte_class(class: &ClassBytes) -> Self {
         let is_utf8 = class
             .iter()
             .last()
@@ -308,7 +312,7 @@ impl Regex {
             .end()
             .is_ascii();
         Self {
-            compiled: Compiled::ByteClass(compile_class(class.iter())),
+            compiled: Kind::ByteClass(compile_class(class.iter())).into(),
             capacity: 1,
             is_utf8,
         }
@@ -325,87 +329,154 @@ impl Regex {
                 hir::RepetitionRange::Bounded(a, b) => (a, b),
             },
         };
-        let inner = Self::with_hir(*rep.hir, max_repeat)?;
-        let max = upper as usize;
-        let capacity = inner.capacity * max;
 
+        // simplification: `(<any>){0}` is always empty.
+        if upper == 0 {
+            return Ok(Self::default());
+        }
+
+        let mut regex = Self::with_hir(*rep.hir, max_repeat)?;
+        regex.capacity *= upper as usize;
         if lower == upper {
-            if let Compiled::Literal(lit) = inner.compiled {
-                return Ok(Self {
-                    compiled: Compiled::Literal(lit.repeat(max)),
-                    capacity,
-                    is_utf8: inner.is_utf8 || lower == 0,
-                });
+            regex.compiled.repeat_const *= upper;
+        } else {
+            regex
+                .compiled
+                .repeat_ranges
+                .push(Uniform::new_inclusive(lower, upper));
+        }
+
+        // simplification: if the inner is an literal, replace `x{3}` by `xxx`.
+        if let Kind::Literal(lit) = &mut regex.compiled.kind {
+            if regex.compiled.repeat_const > 1 {
+                *lit = lit.repeat(regex.compiled.repeat_const as usize);
+                regex.compiled.repeat_const = 1;
             }
         }
 
-        Ok(Self {
-            compiled: Compiled::Repeat {
-                count: Uniform::new_inclusive(lower, upper),
-                inner: Box::new(inner.compiled),
-            },
-            capacity,
-            is_utf8: inner.is_utf8,
-        })
+        Ok(regex)
     }
 
-    fn with_hirs_concatenated(hirs: Vec<Hir>, max_repeat: u32) -> Result<Self, Error> {
+    fn with_sequence(hirs: Vec<Hir>, max_repeat: u32) -> Result<Self, Error> {
         let mut seq = Vec::with_capacity(hirs.len());
         let mut capacity = 0;
         let mut is_utf8 = true;
+
         for hir in hirs {
             let regex = Self::with_hir(hir, max_repeat)?;
-            seq.push(regex.compiled);
             capacity += regex.capacity;
             if is_utf8 && !regex.is_utf8 {
                 is_utf8 = false;
             }
+            let compiled = regex.compiled;
+            if compiled.is_single() {
+                // simplification: `x(yz)` = `xyz`
+                if let Kind::Sequence(mut s) = compiled.kind {
+                    seq.append(&mut s);
+                    continue;
+                }
+            }
+            seq.push(compiled);
         }
+
+        // Further simplify by merging adjacent literals.
+        let mut simplified = Vec::with_capacity(seq.len());
+        let mut combined_lit = Vec::new();
+        for cur in seq {
+            if cur.is_single() {
+                if let Kind::Literal(mut lit) = cur.kind {
+                    combined_lit.append(&mut lit);
+                    continue;
+                }
+            }
+            if !combined_lit.is_empty() {
+                simplified.push(Kind::Literal(mem::take(&mut combined_lit)).into());
+            }
+            simplified.push(cur);
+        }
+
+        if !combined_lit.is_empty() {
+            simplified.push(Kind::Literal(combined_lit).into());
+        }
+
+        let compiled = match simplified.len() {
+            0 => return Ok(Self::default()),
+            1 => simplified.swap_remove(0),
+            _ => Kind::Sequence(simplified).into(),
+        };
+
         Ok(Self {
-            compiled: simplify_sequence(seq),
+            compiled,
             capacity,
             is_utf8,
         })
     }
 
-    fn with_hirs_alternations(hirs: Vec<Hir>, max_repeat: u32) -> Result<Self, Error> {
+    fn with_choices(hirs: Vec<Hir>, max_repeat: u32) -> Result<Self, Error> {
         let mut choices = Vec::with_capacity(hirs.len());
         let mut capacity = 0;
         let mut is_utf8 = true;
         for hir in hirs {
             let regex = Self::with_hir(hir, max_repeat)?;
-            match regex.compiled {
-                Compiled::Any {
-                    choices: mut sc, ..
-                } => choices.append(&mut sc),
-                compiled => choices.push(compiled),
-            };
             if regex.capacity > capacity {
                 capacity = regex.capacity;
             }
             if is_utf8 && !regex.is_utf8 {
                 is_utf8 = false;
             }
+
+            let compiled = regex.compiled;
+            if compiled.is_single() {
+                if let Kind::Any {
+                    choices: mut sc, ..
+                } = compiled.kind
+                {
+                    choices.append(&mut sc);
+                    continue;
+                }
+            }
+            choices.push(compiled);
         }
         Ok(Self {
-            compiled: Compiled::Any {
+            compiled: Kind::Any {
                 index: Uniform::new(0, choices.len()),
                 choices,
-            },
+            }
+            .into(),
             capacity,
             is_utf8,
         })
     }
 }
 
+/// Represents a compiled regex component.
 #[derive(Clone, Debug)]
-enum Compiled {
+struct Compiled {
+    // Constant part of repetition.
+    repeat_const: u32,
+    // Variable parts of repetition. The repeats are multiplied together.
+    repeat_ranges: Vec<Uniform<u32>>,
+    // Kind of atomic regex component.
+    kind: Kind,
+}
+
+impl Default for Compiled {
+    fn default() -> Self {
+        Kind::default().into()
+    }
+}
+
+impl Compiled {
+    /// Returns whether this component has no repetition.
+    fn is_single(&self) -> bool {
+        self.repeat_const == 1 && self.repeat_ranges.is_empty()
+    }
+}
+
+#[derive(Clone, Debug)]
+enum Kind {
     Literal(Vec<u8>),
     Sequence(Vec<Compiled>),
-    Repeat {
-        count: Uniform<u32>,
-        inner: Box<Compiled>,
-    },
     Any {
         index: Uniform<usize>,
         choices: Vec<Compiled>,
@@ -414,76 +485,76 @@ enum Compiled {
     ByteClass(CompiledClass<u8>),
 }
 
-impl Compiled {
-    fn eval_into<R: Rng + ?Sized>(&self, rng: &mut R, output: &mut Vec<u8>) {
-        match self {
-            Self::Sequence(seq) => {
-                for elem in seq {
-                    elem.eval_into(rng, output);
-                }
-            }
-            Self::Literal(lit) => {
-                output.extend_from_slice(lit);
-            }
-            Self::Repeat { count, inner, .. } => {
-                let count = count.sample(rng);
-                for _ in 0..count {
-                    inner.eval_into(rng, output);
-                }
-            }
-            Self::Any { index, choices } => {
-                let index = index.sample(rng);
-                choices[index].eval_into(rng, output);
-            }
-            Self::UnicodeClass(class) => {
-                let c = char::from_u32(class.sample(rng)).expect("valid char");
-                let mut buf = [0; 4];
-                output.extend_from_slice(c.encode_utf8(&mut buf).as_bytes());
-            }
-            Self::ByteClass(class) => {
-                let b = class.sample(rng);
-                output.push(b);
-            }
+impl Default for Kind {
+    fn default() -> Self {
+        Self::Literal(Vec::new())
+    }
+}
+
+impl From<Kind> for Compiled {
+    fn from(kind: Kind) -> Self {
+        Self {
+            repeat_const: 1,
+            repeat_ranges: Vec::new(),
+            kind,
         }
     }
 }
 
-/// Merges adjacent literals into the same node.
-///
-/// `regex_syntax` will produce one node per letter. This simplification process
-/// is necessary to speed up the generator.
-fn simplify_sequence(mut seq: Vec<Compiled>) -> Compiled {
-    let mut simplified = Vec::with_capacity(seq.len());
-    seq.reverse();
+struct EvalCtx<'a, R: ?Sized + 'a> {
+    output: Vec<u8>,
+    rng: &'a mut R,
+}
 
-    while let Some(elem) = seq.pop() {
-        match elem {
-            Compiled::Sequence(subseq) => {
-                let sim = simplify_sequence(subseq);
-                if let Compiled::Sequence(mut ss) = sim {
-                    ss.reverse();
-                    seq.append(&mut ss);
-                } else {
-                    seq.push(sim);
-                }
-            }
-            Compiled::Literal(mut lit) => {
-                if let Some(Compiled::Literal(prev_lit)) = simplified.last_mut() {
-                    prev_lit.append(&mut lit);
-                    continue;
-                }
-                if !lit.is_empty() {
-                    simplified.push(Compiled::Literal(lit));
-                }
-            }
-            elem => simplified.push(elem),
+impl<'a, R: Rng + ?Sized + 'a> EvalCtx<'a, R> {
+    fn eval(&mut self, compiled: &Compiled) {
+        let count = compiled
+            .repeat_ranges
+            .iter()
+            .fold(compiled.repeat_const, |c, u| c * u.sample(self.rng));
+
+        match &compiled.kind {
+            Kind::Literal(lit) => self.eval_literal(count, lit),
+            Kind::Sequence(seq) => self.eval_sequence(count, seq),
+            Kind::Any { index, choices } => self.eval_alt(count, index, choices),
+            Kind::UnicodeClass(class) => self.eval_unicode_class(count, class),
+            Kind::ByteClass(class) => self.eval_byte_class(count, class),
         }
     }
 
-    match simplified.len() {
-        0 => Compiled::Literal(Vec::new()),
-        1 => simplified.swap_remove(0),
-        _ => Compiled::Sequence(simplified),
+    fn eval_literal(&mut self, count: u32, lit: &[u8]) {
+        for _ in 0..count {
+            self.output.extend_from_slice(lit);
+        }
+    }
+
+    fn eval_sequence(&mut self, count: u32, seq: &[Compiled]) {
+        for _ in 0..count {
+            for compiled in seq {
+                self.eval(compiled);
+            }
+        }
+    }
+
+    fn eval_alt(&mut self, count: u32, index: &Uniform<usize>, choices: &[Compiled]) {
+        for _ in 0..count {
+            let idx = index.sample(self.rng);
+            self.eval(&choices[idx]);
+        }
+    }
+
+    fn eval_unicode_class(&mut self, count: u32, class: &CompiledClass<u32>) {
+        let mut buf = [0; 4];
+        for value in class.sample_iter(&mut self.rng).take(count as usize) {
+            let c = char::from_u32(value).expect("valid char");
+            let bytes = c.encode_utf8(&mut buf).as_bytes();
+            self.output.extend_from_slice(bytes);
+        }
+    }
+
+    fn eval_byte_class(&mut self, count: u32, class: &CompiledClass<u8>) {
+        self.output
+            .extend(class.sample_iter(&mut self.rng).take(count as usize));
     }
 }
 
@@ -712,6 +783,7 @@ mod test {
         check_str_limited("[a-zA-Z0-9]", 62);
         check_str_limited("a{3,8}", 6);
         check_str_limited("a{3}", 1);
+        check_str_limited("a{3}-a{3}", 1);
         check_str_limited("(abcde)", 1);
         check_str_limited("a?b?", 4);
     }
