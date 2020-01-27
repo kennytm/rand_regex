@@ -46,6 +46,7 @@ use std::char;
 use std::error;
 use std::fmt::{self, Debug};
 use std::mem;
+use std::string::FromUtf8Error;
 
 const SHORT_UNICODE_CLASS_COUNT: usize = 64;
 
@@ -148,14 +149,24 @@ impl Distribution<String> for Regex {
     ///
     /// If the regex produced some non-UTF-8 byte sequence, this method will
     /// panic. You may want to check [`is_utf8()`](Regex::is_utf8) to ensure the
-    /// regex will only generate valid Unicode strings, or sample a `Vec<u8>`
-    /// and manually check for UTF-8 validity.
+    /// regex will only generate valid Unicode strings, or sample a
+    /// `Result<String, FromUtf8Error>` and manually handle the error.
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> String {
+        <Self as Distribution<Result<_, _>>>::sample(self, rng).unwrap()
+    }
+}
+
+impl Distribution<Result<String, FromUtf8Error>> for Regex {
+    /// Samples a random string satisfying the regex.
+    ///
+    /// The the sampled bytes sequence is not valid UTF-8, the sampling result
+    /// is an Err value.
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Result<String, FromUtf8Error> {
         let bytes = <Self as Distribution<Vec<u8>>>::sample(self, rng);
         if self.is_utf8 {
-            unsafe { String::from_utf8_unchecked(bytes) }
+            unsafe { Ok(String::from_utf8_unchecked(bytes)) }
         } else {
-            String::from_utf8(bytes).unwrap()
+            String::from_utf8(bytes)
         }
     }
 }

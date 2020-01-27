@@ -1,6 +1,11 @@
 Changelog
 =========
 
+v0.14.1 (2020 Jan 27)
+---------------------
+
+Added an additional `impl Distribution<Result<String, FromUtf8Error>> for Regex`.
+
 v0.14.0 (2020 Jan 25)
 ---------------------
 

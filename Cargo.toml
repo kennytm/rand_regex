@@ -1,6 +1,6 @@
 [package]
 name = "rand_regex"
-version = "0.14.0"
+version = "0.14.1"
 authors = ["kennytm <kennytm@gmail.com>"]
 description = "Generates random strings and byte strings matching a regex"
 repository = "https://github.com/kennytm/rand_regex"
