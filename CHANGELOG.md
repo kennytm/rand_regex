@@ -1,6 +1,17 @@
 Changelog
 =========
 
+v0.14.2 (2020 Feb 2)
+--------------------
+
+Added `Regex::is_ascii()` method to check if the regex is ASCII-only.
+
+Added type `Encoding` to represent ASCII, UTF-8 or binary encoding.
+Added `Regex::encoding()` method to return the narrowest string encoding.
+
+Added type `EncodedString` to adjoin a byte string with its encoding.
+Added an additional `impl Distribution<EncodedString> for Regex`.
+
 v0.14.1 (2020 Jan 27)
 ---------------------
 
