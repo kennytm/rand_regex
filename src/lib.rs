@@ -16,9 +16,9 @@
 //!
 //! // all Unicode characters are included when sampling
 //! assert_eq!(samples, vec![
-//!     "᱃៧७᧗-꤂႔-૪۰".to_string(),
-//!     "𝟽٩𑃶᱒-៤꣖-൭᧓".to_string(),
-//!     "𑃰꩗१௭-9၅-६௫".to_string(),
+//!     "᱒᠔८᪄-꧒០-૭۰".to_string(),
+//!     "𞅆٩𑄿꘡-᠐꤆-෧᪀".to_string(),
+//!     "𑄹꯸२౦-9႑-७௮".to_string()
 //! ]);
 //!
 //! // you could use `regex_syntax::Hir` to include more options
@@ -1013,7 +1013,7 @@ mod test {
         check_str_unlimited(r"\p{L}", Encoding::Utf8, 3224);
         check_str(r"\p{M}", Encoding::Utf8, 1627..=2268, 4096);
         check_str(r"\p{N}", Encoding::Utf8, 1420..=1754, 4096);
-        check_str(r"\p{P}", Encoding::Utf8, 772..=792, 4096);
+        check_str(r"\p{P}", Encoding::Utf8, 772..=798, 4096);
         check_str_unlimited(r"\p{S}", Encoding::Utf8, 2355);
         check_str_limited(r"\p{Z}", Encoding::Utf8, 19);
         check_str_unlimited(r"\p{C}", Encoding::Utf8, 3478);
@@ -1033,7 +1033,7 @@ mod test {
         check_str(r"\p{Latin}", Encoding::Utf8, 1202..=1353, 4096);
         check_str(r"\p{Greek}", Encoding::Utf8, 512..=518, 4096);
         check_str(r"\p{Cyrillic}", Encoding::Utf8, 439..=443, 4096);
-        check_str_limited(r"\p{Armenian}", Encoding::Utf8, 95);
+        check_str_limited(r"\p{Armenian}", Encoding::Utf8, 96);
         check_str_limited(r"\p{Hebrew}", Encoding::Utf8, 134);
         check_str(r"\p{Arabic}", Encoding::Utf8, 1156..=1281, 4096);
         check_str_limited(r"\p{Syriac}", Encoding::Utf8, 88);
@@ -1042,7 +1042,7 @@ mod test {
         check_str_limited(r"\p{Bengali}", Encoding::Utf8, 96);
         check_str_limited(r"\p{Gurmukhi}", Encoding::Utf8, 80);
         check_str_limited(r"\p{Gujarati}", Encoding::Utf8, 91);
-        check_str_limited(r"\p{Oriya}", Encoding::Utf8, 90);
+        check_str_limited(r"\p{Oriya}", Encoding::Utf8, 91);
         check_str_limited(r"\p{Tamil}", Encoding::Utf8, 123);
         check_str_unlimited(r"\p{Hangul}", Encoding::Utf8, 2585);
         check_str(r"\p{Hiragana}", Encoding::Utf8, 376..=379, 4096);
@@ -1050,7 +1050,7 @@ mod test {
         check_str_unlimited(r"\p{Han}", Encoding::Utf8, 3163);
         check_str_limited(r"\p{Tagalog}", Encoding::Utf8, 20);
         check_str_limited(r"\p{Linear_B}", Encoding::Utf8, 211);
-        check_str(r"\p{Inherited}", Encoding::Utf8, 564..=571, 4096);
+        check_str(r"\p{Inherited}", Encoding::Utf8, 564..=573, 4096);
     }
 
     #[test]
