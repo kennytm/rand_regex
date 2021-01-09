@@ -13,7 +13,7 @@ fn alphanumeric_baseline(b: &mut Bencher<'_>) {
         Alphanumeric
             .sample_iter(&mut rng)
             .take(count)
-            .collect::<String>()
+            .collect::<Vec<u8>>()
     });
 }
 
