@@ -2,7 +2,7 @@
 ============
 
 [![Crates.io](https://img.shields.io/crates/v/rand_regex.svg)](https://crates.io/crates/rand_regex)
-[![Build Status](https://travis-ci.com/kennytm/rand_regex.svg?branch=master)](https://travis-ci.com/kennytm/rand_regex)
+[![Build status](https://github.com/kennytm/rand_regex/workflows/Rust/badge.svg)](https://github.com/kennytm/rand_regex/actions?query=workflow%3ARust)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE.txt)
 
 Generates random strings and byte strings matching a regex.
