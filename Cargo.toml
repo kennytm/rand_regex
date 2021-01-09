@@ -25,13 +25,13 @@ name = "benchmark"
 harness = false
 
 [dependencies]
-rand = "0.7"
+rand = "0.8"
 regex-syntax = { version = "0.6", default-features = false }
 
 [dev-dependencies]
 regex = { version = "1.3", default-features = false, features = ["std", "unicode"] }
-rand_xorshift = "0.2"
-rand_distr = "0.2"
+rand_xorshift = "0.3"
+rand_distr = "0.4"
 criterion = "0.3"
 
 [profile.bench]
