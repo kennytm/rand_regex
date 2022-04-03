@@ -55,13 +55,6 @@ use std::string::FromUtf8Error;
 const SHORT_UNICODE_CLASS_COUNT: usize = 64;
 
 /// Error returned by [`Regex::compile()`] and [`Regex::with_hir()`].
-///
-/// # Examples
-///
-/// ```
-/// let gen = rand_regex::Regex::compile(r"^.{4}\b.{4}$", 100);
-/// assert_eq!(gen.err(), Some(rand_regex::Error::Anchor));
-/// ```
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Error {
     /// Anchors (`^`, `$`, `\A`, `\z`) and word boundary assertions (`\b`, `\B`)
@@ -463,7 +456,7 @@ impl Regex {
     pub fn with_hir(hir: Hir, max_repeat: u32) -> Result<Self, Error> {
         match hir.into_kind() {
             HirKind::Empty => Ok(Self::default()),
-            HirKind::Anchor(_) | HirKind::WordBoundary(_) => Err(Error::Anchor),
+            HirKind::Anchor(_) | HirKind::WordBoundary(_) => Ok(Self::default()),
             HirKind::Group(hir::Group { hir, .. }) => Self::with_hir(*hir, max_repeat),
 
             HirKind::Literal(hir::Literal::Unicode(c)) => Ok(Self::with_unicode_literal(c)),
@@ -979,6 +972,8 @@ mod test {
         check_str_limited("a{3}-a{3}", Encoding::Ascii, 1);
         check_str_limited("(abcde)", Encoding::Ascii, 1);
         check_str_limited("a?b?", Encoding::Ascii, 4);
+        check_str_limited("^a?b?", Encoding::Ascii, 4);
+        check_str_limited("^a?b?$", Encoding::Ascii, 4);
     }
 
     #[test]
