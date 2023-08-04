@@ -23,9 +23,9 @@ let samples = (&mut rng).sample_iter(&gen).take(3).collect::<Vec<String>>();
 
 // all Unicode characters are included when sampling
 assert_eq!(samples, vec![
-    "᱃៧७᧗-꤂႔-૪۰".to_string(),
-    "𝟽٩𑃶᱒-៤꣖-൭᧓".to_string(),
-    "𑃰꩗१௭-9၅-६௫".to_string(),
+    "꘥᥉১᪕-꧷៩-୦۱".to_string(),
+    "𞋴۰𑋸꣕-᥆꧰-෮᪑".to_string(),
+    "𑋲𐒥४౫-9႙-९౨".to_string()
 ]);
 
 // you could use `regex_syntax::Hir` to include more options
