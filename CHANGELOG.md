@@ -1,6 +1,25 @@
 Changelog
 =========
 
+v0.16.0 (2023 Aug 4)
+--------------------
+
+Updated `regex-syntax` dependency.
+
+Depends on `rand 0.8` and `regex-syntax 0.7`. The minimal Rust version is 1.71.1.
+
+v0.15.1 (2021 Feb 12)
+---------------------
+
+No longer enables all default `rand` features.
+
+v0.15.0 (2021 Feb 12)
+---------------------
+
+Updated `rand` dependency.
+
+Depends on `rand 0.8` and `regex_syntax 0.6`. The minimal Rust version is 1.40.
+
 v0.14.2 (2020 Feb 2)
 --------------------
 
