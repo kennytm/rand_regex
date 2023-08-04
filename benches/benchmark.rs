@@ -1,6 +1,8 @@
 use criterion::{criterion_group, criterion_main, Bencher, Criterion};
-use rand::distributions::{Distribution, Standard, Uniform};
-use rand::{Rng, SeedableRng};
+use rand::{
+    distributions::{Distribution, Standard, Uniform},
+    Rng, SeedableRng,
+};
 use rand_distr::Alphanumeric;
 use rand_regex::Regex;
 use rand_xorshift::XorShiftRng;

@@ -16,9 +16,9 @@
 //!
 //! // all Unicode characters are included when sampling
 //! assert_eq!(samples, vec![
-//!     "᱒᠔८᪄-꧒០-૭۰".to_string(),
-//!     "𞅆٩𑄿꘡-᠐꤆-෧᪀".to_string(),
-//!     "𑄹꯸२౦-9႑-७௮".to_string()
+//!     "꘥᥉১᪕-꧷៩-୦۱".to_string(),
+//!     "𞋴۰𑋸꣕-᥆꧰-෮᪑".to_string(),
+//!     "𑋲𐒥४౫-9႙-९౨".to_string()
 //! ]);
 //!
 //! // you could use `regex_syntax::Hir` to include more options
@@ -36,21 +36,24 @@
 
 #![allow(clippy::must_use_candidate)]
 
-use rand::distributions::uniform::Uniform;
-use rand::distributions::Distribution;
-use rand::Rng;
-use regex_syntax::hir::{self, ClassBytes, ClassUnicode, Hir, HirKind, Repetition};
-use regex_syntax::Parser;
-use std::borrow::Borrow;
-use std::char;
-use std::cmp::Ordering;
-use std::convert::TryFrom;
-use std::error;
-use std::fmt::{self, Debug};
-use std::hash::{Hash, Hasher};
-use std::mem;
-use std::str::Utf8Error;
-use std::string::FromUtf8Error;
+use rand::{
+    distributions::{uniform::Uniform, Distribution},
+    Rng,
+};
+use regex_syntax::{
+    hir::{self, ClassBytes, ClassUnicode, Hir, HirKind, Repetition},
+    Parser,
+};
+use std::{
+    char,
+    cmp::Ordering,
+    error,
+    fmt::{self, Debug},
+    hash::{Hash, Hasher},
+    mem,
+    str::Utf8Error,
+    string::FromUtf8Error,
+};
 
 const SHORT_UNICODE_CLASS_COUNT: usize = 64;
 
@@ -99,7 +102,7 @@ pub enum Error {
     ///     _ => false,
     /// });
     /// ```
-    Syntax(regex_syntax::Error),
+    Syntax(Box<regex_syntax::Error>),
 }
 
 impl fmt::Display for Error {
@@ -122,7 +125,7 @@ impl error::Error for Error {
 
 impl From<regex_syntax::Error> for Error {
     fn from(e: regex_syntax::Error) -> Self {
-        Self::Syntax(e)
+        Self::Syntax(Box::new(e))
     }
 }
 
@@ -135,26 +138,6 @@ pub enum Encoding {
     Utf8 = 1,
     /// Arbitrary bytes (no encoding).
     Binary = 2,
-}
-
-impl Encoding {
-    /// Returns `Encoding::Ascii` if `b` is true, `Encoding::Utf8` otherwise.
-    fn ascii_or_utf8(b: bool) -> Self {
-        if b {
-            Encoding::Ascii
-        } else {
-            Encoding::Utf8
-        }
-    }
-
-    /// Returns `Encoding::Ascii` if `b` is true, `Encoding::Binary` otherwise.
-    fn ascii_or_binary(b: bool) -> Self {
-        if b {
-            Encoding::Ascii
-        } else {
-            Encoding::Binary
-        }
-    }
 }
 
 /// The internal representation of [`EncodedString`], separated out to prevent
@@ -254,19 +237,19 @@ impl Eq for EncodedString {}
 
 impl PartialOrd for EncodedString {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.as_bytes().partial_cmp(&other.as_bytes())
+        self.as_bytes().partial_cmp(other.as_bytes())
     }
 }
 
 impl Ord for EncodedString {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.as_bytes().cmp(&other.as_bytes())
+        self.as_bytes().cmp(other.as_bytes())
     }
 }
 
 impl Hash for EncodedString {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.as_bytes().hash(state)
+        self.as_bytes().hash(state);
     }
 }
 
@@ -388,7 +371,7 @@ impl Regex {
     /// ```
     /// let utf8_hir = regex_syntax::ParserBuilder::new()
     ///     .unicode(false)
-    ///     .allow_invalid_utf8(true)
+    ///     .utf8(false)
     ///     .build()
     ///     .parse(r"[\x00-\x7f]")
     ///     .unwrap();
@@ -397,7 +380,7 @@ impl Regex {
     ///
     /// let non_utf8_hir = regex_syntax::ParserBuilder::new()
     ///     .unicode(false)
-    ///     .allow_invalid_utf8(true)
+    ///     .utf8(false)
     ///     .build()
     ///     .parse(r"[\x00-\xff]")
     ///     .unwrap();
@@ -463,11 +446,10 @@ impl Regex {
     pub fn with_hir(hir: Hir, max_repeat: u32) -> Result<Self, Error> {
         match hir.into_kind() {
             HirKind::Empty => Ok(Self::default()),
-            HirKind::Anchor(_) | HirKind::WordBoundary(_) => Err(Error::Anchor),
-            HirKind::Group(hir::Group { hir, .. }) => Self::with_hir(*hir, max_repeat),
+            HirKind::Look(_) => Err(Error::Anchor),
+            HirKind::Capture(hir::Capture { sub, .. }) => Self::with_hir(*sub, max_repeat),
 
-            HirKind::Literal(hir::Literal::Unicode(c)) => Ok(Self::with_unicode_literal(c)),
-            HirKind::Literal(hir::Literal::Byte(b)) => Ok(Self::with_byte_literal(b)),
+            HirKind::Literal(hir::Literal(bytes)) => Ok(Self::with_bytes_literal(bytes.into())),
             HirKind::Class(hir::Class::Unicode(class)) => Ok(Self::with_unicode_class(&class)),
             HirKind::Class(hir::Class::Bytes(class)) => Ok(Self::with_byte_class(&class)),
             HirKind::Repetition(rep) => Self::with_repetition(rep, max_repeat),
@@ -476,72 +458,51 @@ impl Regex {
         }
     }
 
-    fn with_unicode_literal(c: char) -> Self {
-        let mut buf = [0_u8; 4];
-        let string = c.encode_utf8(&mut buf);
+    fn with_bytes_literal(bytes: Vec<u8>) -> Self {
+        let es = EncodedString::from(bytes);
+        let encoding = es.encoding();
+        let bytes = Vec::from(es);
         Self {
-            compiled: Kind::Literal(string.as_bytes().to_owned()).into(),
-            capacity: string.len(),
-            encoding: Encoding::ascii_or_utf8(c.is_ascii()),
-        }
-    }
-
-    fn with_byte_literal(b: u8) -> Self {
-        Self {
-            compiled: Kind::Literal(vec![b]).into(),
-            capacity: 1,
-            encoding: Encoding::ascii_or_binary(b.is_ascii()),
+            capacity: bytes.len(),
+            compiled: Kind::Literal(bytes).into(),
+            encoding,
         }
     }
 
     fn with_unicode_class(class: &ClassUnicode) -> Self {
-        let capacity = class
-            .iter()
-            .last()
-            .expect("at least 1 interval")
-            .end()
-            .len_utf8();
-        let kind = if capacity == 1 {
-            let ranges = class
-                .iter()
-                .map(|uc| hir::ClassBytesRange::new(uc.start() as u8, uc.end() as u8));
-            Kind::ByteClass(ByteClass::compile(ranges))
+        if let Some(byte_class) = class.to_byte_class() {
+            Self::with_byte_class(&byte_class)
         } else {
-            compile_unicode_class(class.ranges())
-        };
-        Self {
-            compiled: kind.into(),
-            capacity,
-            encoding: Encoding::ascii_or_utf8(capacity == 1),
+            Self {
+                compiled: compile_unicode_class(class.ranges()).into(),
+                capacity: class.maximum_len().unwrap_or(0),
+                encoding: Encoding::Utf8,
+            }
         }
     }
 
     fn with_byte_class(class: &ClassBytes) -> Self {
         Self {
-            compiled: Kind::ByteClass(ByteClass::compile(class.iter())).into(),
+            compiled: Kind::ByteClass(ByteClass::compile(class.ranges())).into(),
             capacity: 1,
-            encoding: Encoding::ascii_or_binary(class.is_all_ascii()),
+            encoding: if class.is_ascii() {
+                Encoding::Ascii
+            } else {
+                Encoding::Binary
+            },
         }
     }
 
     fn with_repetition(rep: Repetition, max_repeat: u32) -> Result<Self, Error> {
-        let (lower, upper) = match rep.kind {
-            hir::RepetitionKind::ZeroOrOne => (0, 1),
-            hir::RepetitionKind::ZeroOrMore => (0, max_repeat),
-            hir::RepetitionKind::OneOrMore => (1, 1 + max_repeat),
-            hir::RepetitionKind::Range(range) => match range {
-                hir::RepetitionRange::Exactly(a) => (a, a),
-                hir::RepetitionRange::AtLeast(a) => (a, a + max_repeat),
-                hir::RepetitionRange::Bounded(a, b) => (a, b),
-            },
-        };
+        let lower = rep.min;
+        let upper = rep.max.unwrap_or(lower + max_repeat);
 
         // simplification: `(<any>){0}` is always empty.
         if upper == 0 {
             return Ok(Self::default());
         }
 
-        let mut regex = Self::with_hir(*rep.hir, max_repeat)?;
+        let mut regex = Self::with_hir(*rep.sub, max_repeat)?;
         regex.capacity *= upper as usize;
         if lower == upper {
             regex.compiled.repeat_const *= upper;
@@ -845,10 +806,9 @@ struct ByteClass {
 }
 
 impl ByteClass {
-    pub fn compile(ranges: impl IntoIterator<Item = impl Borrow<hir::ClassBytesRange>>) -> Self {
+    fn compile(ranges: &[hir::ClassBytesRange]) -> Self {
         let mut cases = Vec::with_capacity(256);
         for range in ranges {
-            let range = range.borrow();
             cases.extend(range.start()..=range.end());
         }
         Self {
@@ -965,8 +925,8 @@ mod test {
         check_str_limited("a+", Encoding::Ascii, 101);
         check_str_limited("a{4,}", Encoding::Ascii, 101);
         check_str_limited("(foo|bar)(xyzzy|plugh)", Encoding::Ascii, 4);
-        check_str_unlimited(".", Encoding::Utf8, 3489);
-        check_str_unlimited("(?s).", Encoding::Utf8, 3489);
+        check_str_unlimited(".", Encoding::Utf8, 4075);
+        check_str_unlimited("(?s).", Encoding::Utf8, 4075);
     }
 
     #[test]
@@ -1009,59 +969,148 @@ mod test {
 
     #[test]
     #[cfg(feature = "unicode")]
-    fn test_unicode_character_classes() {
-        check_str_unlimited(r"\p{L}", Encoding::Utf8, 3224);
-        check_str(r"\p{M}", Encoding::Utf8, 1627..=2268, 4096);
-        check_str(r"\p{N}", Encoding::Utf8, 1420..=1754, 4096);
-        check_str(r"\p{P}", Encoding::Utf8, 772..=798, 4096);
-        check_str_unlimited(r"\p{S}", Encoding::Utf8, 2355);
-        check_str_limited(r"\p{Z}", Encoding::Utf8, 19);
-        check_str_unlimited(r"\p{C}", Encoding::Utf8, 3478);
+    fn sanity_test_unicode_character_classes_size() {
+        // This test records the number of characters in each unicode class.
+        // If any of these test failed, please:
+        //  1. update the RHS of the numbers
+        //  2. increase the revision number of the regex-syntax dependency
+        //  3. update the relevant ranges in the test_unicode_* functions.
+        //
+        // (for easy reference, there are 1_112_064 assignable code points)
 
-        check_str_unlimited(r"\P{L}", Encoding::Utf8, 3479);
-        check_str_unlimited(r"\P{M}", Encoding::Utf8, 3489);
-        check_str_unlimited(r"\P{N}", Encoding::Utf8, 3489);
-        check_str_unlimited(r"\P{P}", Encoding::Utf8, 3489);
-        check_str_unlimited(r"\P{S}", Encoding::Utf8, 3489);
-        check_str_unlimited(r"\P{Z}", Encoding::Utf8, 3489);
-        check_str_unlimited(r"\P{C}", Encoding::Utf8, 3236);
+        fn count_class_chars(pattern: &str) -> usize {
+            use regex_syntax::{
+                hir::{Class, HirKind},
+                parse,
+            };
+
+            let hir = parse(pattern).unwrap();
+            let HirKind::Class(Class::Unicode(cls)) = hir.into_kind() else { unreachable!() };
+            // we assume all positive unicode classes do not cover the surrogate range.
+            // otherwise `r.len()` is wrong.
+            cls.iter().map(|r| r.len()).sum()
+        }
+
+        assert_eq!(count_class_chars(r"\p{L}"), 136_104);
+        assert_eq!(count_class_chars(r"\p{M}"), 2_450);
+        assert_eq!(count_class_chars(r"\p{N}"), 1_831);
+        assert_eq!(count_class_chars(r"\p{P}"), 842);
+        assert_eq!(count_class_chars(r"\p{S}"), 7_770);
+        assert_eq!(count_class_chars(r"\p{Z}"), 19);
+        assert_eq!(count_class_chars(r"\p{C}"), 965_096);
+
+        assert_eq!(count_class_chars(r"\p{Latin}"), 1_481);
+        assert_eq!(count_class_chars(r"\p{Greek}"), 518);
+        assert_eq!(count_class_chars(r"\p{Cyrillic}"), 506);
+        assert_eq!(count_class_chars(r"\p{Armenian}"), 96);
+        assert_eq!(count_class_chars(r"\p{Hebrew}"), 134);
+        assert_eq!(count_class_chars(r"\p{Arabic}"), 1_368);
+        assert_eq!(count_class_chars(r"\p{Syriac}"), 88);
+        assert_eq!(count_class_chars(r"\p{Thaana}"), 50);
+        assert_eq!(count_class_chars(r"\p{Devanagari}"), 164);
+        assert_eq!(count_class_chars(r"\p{Bengali}"), 96);
+        assert_eq!(count_class_chars(r"\p{Gurmukhi}"), 80);
+        assert_eq!(count_class_chars(r"\p{Gujarati}"), 91);
+        assert_eq!(count_class_chars(r"\p{Oriya}"), 91);
+        assert_eq!(count_class_chars(r"\p{Tamil}"), 123);
+        assert_eq!(count_class_chars(r"\p{Hangul}"), 11_739);
+        assert_eq!(count_class_chars(r"\p{Hiragana}"), 381);
+        assert_eq!(count_class_chars(r"\p{Katakana}"), 321);
+        assert_eq!(count_class_chars(r"\p{Han}"), 98_408);
+        assert_eq!(count_class_chars(r"\p{Tagalog}"), 23);
+        assert_eq!(count_class_chars(r"\p{Linear_B}"), 211);
+        assert_eq!(count_class_chars(r"\p{Inherited}"), 657);
+
+        assert_eq!(count_class_chars(r"\d"), 680);
+        assert_eq!(count_class_chars(r"\s"), 25);
+        assert_eq!(count_class_chars(r"\w"), 139_612);
+    }
+
+    #[test]
+    #[cfg(feature = "unicode")]
+    fn test_unicode_character_classes() {
+        // The range describes the number of distinct strings we can get from the regex.
+        //
+        // Suppose the class has M members. If we randomly pick N items out of it with duplicates,
+        // the chance that there are K distinct members is the classical occupancy distibution[1]:
+        //
+        //      Occ(K|N,M) = (S2(N,K) * M!) / ((M-K)! * M^N)
+        //
+        // where S2(N,K) are the Stirling numbers of the second kind.
+        //
+        // This distribution has mean and variance of
+        //
+        //      μ  = M * (1 - (1 - 1/M)^N)
+        //      σ² = M * ((M(M-1))^N + (M-1)(M(M-2))^N - M(M-1)^(2N)) / M^(2N)
+        //
+        // which we can use to approximate as a normal distrubition and calculate the CDF to find
+        // out the 0.0001% percentile as the lower bound of K.
+        //
+        // (The upper bound should always be M, the 100% percentile.)
+        //
+        // The Mathematica code to compute the lower bound of K is:
+        //
+        //      getInterval[m_, n_] := Block[{
+        //          mean = m(1-(1-1/m)^n),
+        //          var = m((m(m-1))^n+(m-1)(m(m-2))^n-m(m-1)^(2n))/m^(2n)
+        //      }, InverseCDF[NormalDistribution[mean, Sqrt[var]], 1*^-6]
+        //
+        //      (* Usage: getInterval[2450, 4096.0`32] *)
+        //
+        // [1]: https://doi.org/10.1080/00031305.2019.1699445
+
+        check_str_unlimited(r"\p{L}", Encoding::Utf8, 3999);
+        check_str(r"\p{M}", Encoding::Utf8, 1918..=2450, 4096);
+        check_str(r"\p{N}", Encoding::Utf8, 1582..=1831, 4096);
+        check_str(r"\p{P}", Encoding::Utf8, 824..=842, 4096);
+        check_str_unlimited(r"\p{S}", Encoding::Utf8, 3083);
+        check_str_limited(r"\p{Z}", Encoding::Utf8, 19);
+        check_str_unlimited(r"\p{C}", Encoding::Utf8, 4073);
+
+        check_str_unlimited(r"\P{L}", Encoding::Utf8, 4074);
+        check_str_unlimited(r"\P{M}", Encoding::Utf8, 4075);
+        check_str_unlimited(r"\P{N}", Encoding::Utf8, 4075);
+        check_str_unlimited(r"\P{P}", Encoding::Utf8, 4075);
+        check_str_unlimited(r"\P{S}", Encoding::Utf8, 4075);
+        check_str_unlimited(r"\P{Z}", Encoding::Utf8, 4075);
+        check_str_unlimited(r"\P{C}", Encoding::Utf8, 4004);
     }
 
     #[test]
     #[cfg(feature = "unicode")]
     fn test_unicode_script_classes() {
-        check_str(r"\p{Latin}", Encoding::Utf8, 1202..=1353, 4096);
-        check_str(r"\p{Greek}", Encoding::Utf8, 512..=518, 4096);
-        check_str(r"\p{Cyrillic}", Encoding::Utf8, 439..=443, 4096);
+        check_str(r"\p{Latin}", Encoding::Utf8, 1348..=1481, 4096);
+        check_str(r"\p{Greek}", Encoding::Utf8, 516..=518, 4096);
+        check_str(r"\p{Cyrillic}", Encoding::Utf8, 504..=506, 4096);
         check_str_limited(r"\p{Armenian}", Encoding::Utf8, 96);
         check_str_limited(r"\p{Hebrew}", Encoding::Utf8, 134);
-        check_str(r"\p{Arabic}", Encoding::Utf8, 1156..=1281, 4096);
+        check_str(r"\p{Arabic}", Encoding::Utf8, 1264..=1368, 4096);
         check_str_limited(r"\p{Syriac}", Encoding::Utf8, 88);
         check_str_limited(r"\p{Thaana}", Encoding::Utf8, 50);
-        check_str_limited(r"\p{Devanagari}", Encoding::Utf8, 154);
+        check_str_limited(r"\p{Devanagari}", Encoding::Utf8, 164);
         check_str_limited(r"\p{Bengali}", Encoding::Utf8, 96);
         check_str_limited(r"\p{Gurmukhi}", Encoding::Utf8, 80);
         check_str_limited(r"\p{Gujarati}", Encoding::Utf8, 91);
         check_str_limited(r"\p{Oriya}", Encoding::Utf8, 91);
         check_str_limited(r"\p{Tamil}", Encoding::Utf8, 123);
-        check_str_unlimited(r"\p{Hangul}", Encoding::Utf8, 2585);
-        check_str(r"\p{Hiragana}", Encoding::Utf8, 376..=379, 4096);
-        check_str(r"\p{Katakana}", Encoding::Utf8, 302..=304, 4096);
-        check_str_unlimited(r"\p{Han}", Encoding::Utf8, 3163);
-        check_str_limited(r"\p{Tagalog}", Encoding::Utf8, 20);
+        check_str_unlimited(r"\p{Hangul}", Encoding::Utf8, 3363);
+        check_str_limited(r"\p{Hiragana}", Encoding::Utf8, 381);
+        check_str_limited(r"\p{Katakana}", Encoding::Utf8, 321);
+        check_str_unlimited(r"\p{Han}", Encoding::Utf8, 3970);
+        check_str_limited(r"\p{Tagalog}", Encoding::Utf8, 23);
         check_str_limited(r"\p{Linear_B}", Encoding::Utf8, 211);
-        check_str(r"\p{Inherited}", Encoding::Utf8, 564..=573, 4096);
+        check_str(r"\p{Inherited}", Encoding::Utf8, 650..=657, 4096);
     }
 
     #[test]
     #[cfg(feature = "unicode")]
     fn test_perl_classes() {
-        check_str_unlimited(r"\d+", Encoding::Utf8, 4046);
-        check_str_unlimited(r"\D+", Encoding::Utf8, 4085);
-        check_str_unlimited(r"\s+", Encoding::Utf8, 3940);
-        check_str_unlimited(r"\S+", Encoding::Utf8, 4085);
-        check_str_unlimited(r"\w+", Encoding::Utf8, 4083);
-        check_str_unlimited(r"\W+", Encoding::Utf8, 4085);
+        check_str_unlimited(r"\d+", Encoding::Utf8, 4061);
+        check_str_unlimited(r"\D+", Encoding::Utf8, 4096);
+        check_str_unlimited(r"\s+", Encoding::Utf8, 4014);
+        check_str_unlimited(r"\S+", Encoding::Utf8, 4096);
+        check_str_unlimited(r"\w+", Encoding::Utf8, 4095);
+        check_str_unlimited(r"\W+", Encoding::Utf8, 4096);
     }
 
     #[cfg(any())]
@@ -1096,7 +1145,7 @@ mod test {
         let hir = regex_syntax::ParserBuilder::new()
             .unicode(false)
             .dot_matches_new_line(true)
-            .allow_invalid_utf8(true)
+            .utf8(false)
             .build()
             .parse(PATTERN)
             .unwrap();
@@ -1117,7 +1166,7 @@ mod test {
     fn test_encoding_generator_1() {
         let hir = regex_syntax::ParserBuilder::new()
             .unicode(false)
-            .allow_invalid_utf8(true)
+            .utf8(false)
             .build()
             .parse(r"[\x00-\xff]{2}")
             .unwrap();
@@ -1196,7 +1245,7 @@ mod test {
     fn test_generating_non_utf8_string() {
         let hir = regex_syntax::ParserBuilder::new()
             .unicode(false)
-            .allow_invalid_utf8(true)
+            .utf8(false)
             .build()
             .parse(r"\x88")
             .unwrap();
