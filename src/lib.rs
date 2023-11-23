@@ -55,6 +55,9 @@ use std::{
     string::FromUtf8Error,
 };
 
+// re-export
+pub use regex_syntax;
+
 const SHORT_UNICODE_CLASS_COUNT: usize = 64;
 
 /// Error returned by [`Regex::compile()`] and [`Regex::with_hir()`].
@@ -985,7 +988,9 @@ mod test {
             };
 
             let hir = parse(pattern).unwrap();
-            let HirKind::Class(Class::Unicode(cls)) = hir.into_kind() else { unreachable!() };
+            let HirKind::Class(Class::Unicode(cls)) = hir.into_kind() else {
+                unreachable!()
+            };
             // we assume all positive unicode classes do not cover the surrogate range.
             // otherwise `r.len()` is wrong.
             cls.iter().map(|r| r.len()).sum()
