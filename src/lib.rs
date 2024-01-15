@@ -237,7 +237,7 @@ impl Eq for EncodedString {}
 
 impl PartialOrd for EncodedString {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.as_bytes().partial_cmp(other.as_bytes())
+        Some(self.cmp(other))
     }
 }
 
@@ -985,7 +985,9 @@ mod test {
             };
 
             let hir = parse(pattern).unwrap();
-            let HirKind::Class(Class::Unicode(cls)) = hir.into_kind() else { unreachable!() };
+            let HirKind::Class(Class::Unicode(cls)) = hir.into_kind() else {
+                unreachable!()
+            };
             // we assume all positive unicode classes do not cover the surrogate range.
             // otherwise `r.len()` is wrong.
             cls.iter().map(|r| r.len()).sum()
