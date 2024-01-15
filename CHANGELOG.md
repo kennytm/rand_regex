@@ -1,6 +1,13 @@
 Changelog
 =========
 
+v0.17.0 (2024 Jan 16)
+---------------------
+
+Updated `regex-syntax` dependency.
+
+Depends on `rand 0.8` and `regex-syntax 0.8`.
+
 v0.16.0 (2023 Aug 4)
 --------------------
 

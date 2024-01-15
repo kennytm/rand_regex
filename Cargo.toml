@@ -1,6 +1,6 @@
 [package]
 name = "rand_regex"
-version = "0.16.0"
+version = "0.17.0"
 authors = ["kennytm <kennytm@gmail.com>"]
 description = "Generates random strings and byte strings matching a regex"
 repository = "https://github.com/kennytm/rand_regex"
@@ -27,7 +27,7 @@ harness = false
 
 [dependencies]
 rand = { version = "0.8", default-features = false }
-regex-syntax = { version = "0.7.4", default-features = false, features = ["std"] }
+regex-syntax = { version = "0.8.2", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 rand = "0.8"
