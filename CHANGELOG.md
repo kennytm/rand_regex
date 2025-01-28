@@ -1,6 +1,13 @@
 Changelog
 =========
 
+v0.18.0 (2025 Jan 28)
+---------------------
+
+Updated `rand` dependency.
+
+Dpeneds on `rand 0.9` and `regex-syntax 0.8`.
+
 v0.17.0 (2024 Jan 16)
 ---------------------
 

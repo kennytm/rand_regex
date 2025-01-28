@@ -1,6 +1,6 @@
 [package]
 name = "rand_regex"
-version = "0.17.0"
+version = "0.18.0"
 authors = ["kennytm <kennytm@gmail.com>"]
 description = "Generates random strings and byte strings matching a regex"
 repository = "https://github.com/kennytm/rand_regex"
@@ -26,14 +26,14 @@ name = "benchmark"
 harness = false
 
 [dependencies]
-rand = { version = "0.8", default-features = false }
-regex-syntax = { version = "0.8.2", default-features = false, features = ["std"] }
+rand = { version = "0.9", default-features = false }
+regex-syntax = { version = "0.8.5", default-features = false, features = ["std"] }
 
 [dev-dependencies]
-rand = "0.8"
-regex = { version = "1.9", default-features = false, features = ["std", "unicode"] }
-rand_xorshift = "0.3"
-rand_distr = "0.4"
+rand = "0.9"
+regex = { version = "1.11", default-features = false, features = ["std", "unicode"] }
+rand_xorshift = "0.4"
+rand_distr = "0.5"
 criterion = "0.5"
 
 [profile.bench]

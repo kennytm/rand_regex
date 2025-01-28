@@ -23,9 +23,9 @@ let samples = (&mut rng).sample_iter(&gen).take(3).collect::<Vec<String>>();
 
 // all Unicode characters are included when sampling
 assert_eq!(samples, vec![
-    "꘥᥉১᪕-꧷៩-୦۱".to_string(),
-    "𞋴۰𑋸꣕-᥆꧰-෮᪑".to_string(),
-    "𑋲𐒥४౫-9႙-९౨".to_string()
+    "꧰᪈৭᱃-𐒧᧒-௦۴".to_string(),
+    "𞓰۳𑛐꩑-᪄９-໔᮹".to_string(),
+    "𑛃𑃹९೭-١᥈-৫೪".to_string()
 ]);
 
 // you could use `regex_syntax::Hir` to include more options
@@ -34,9 +34,9 @@ let hir = parser.parse(r"\d{4}-\d{2}-\d{2}").unwrap();
 let gen = rand_regex::Regex::with_hir(hir, 100).unwrap();
 let samples = (&mut rng).sample_iter(&gen).take(3).collect::<Vec<String>>();
 assert_eq!(samples, vec![
-    "8922-87-63".to_string(),
-    "3149-18-88".to_string(),
-    "5420-58-55".to_string(),
+    "2839-82-12".to_string(),
+    "2857-86-63".to_string(),
+    "0381-04-99".to_string(),
 ]);
 ```
 

@@ -16,9 +16,9 @@
 //!
 //! // all Unicode characters are included when sampling
 //! assert_eq!(samples, vec![
-//!     "꘥᥉১᪕-꧷៩-୦۱".to_string(),
-//!     "𞋴۰𑋸꣕-᥆꧰-෮᪑".to_string(),
-//!     "𑋲𐒥४౫-9႙-९౨".to_string()
+//!     "꧰᪈৭᱃-𐒧᧒-௦۴".to_string(),
+//!     "𞓰۳𑛐꩑-᪄９-໔᮹".to_string(),
+//!     "𑛃𑃹९೭-١᥈-৫೪".to_string()
 //! ]);
 //!
 //! // you could use `regex_syntax::Hir` to include more options
@@ -27,9 +27,9 @@
 //! let gen = rand_regex::Regex::with_hir(hir, 100).unwrap();
 //! let samples = (&mut rng).sample_iter(&gen).take(3).collect::<Vec<String>>();
 //! assert_eq!(samples, vec![
-//!     "8922-87-63".to_string(),
-//!     "3149-18-88".to_string(),
-//!     "5420-58-55".to_string(),
+//!     "2839-82-12".to_string(),
+//!     "2857-86-63".to_string(),
+//!     "0381-04-99".to_string(),
 //! ]);
 //! # }
 //! ```
@@ -37,7 +37,7 @@
 #![allow(clippy::must_use_candidate)]
 
 use rand::{
-    distributions::{uniform::Uniform, Distribution},
+    distr::{uniform::Uniform, Distribution},
     Rng,
 };
 use regex_syntax::{
@@ -510,7 +510,7 @@ impl Regex {
             regex
                 .compiled
                 .repeat_ranges
-                .push(Uniform::new_inclusive(lower, upper));
+                .push(Uniform::new_inclusive(lower, upper).expect("upper >= lower"));
         }
 
         // simplification: if the inner is an literal, replace `x{3}` by `xxx`.
@@ -602,7 +602,7 @@ impl Regex {
         }
         Ok(Self {
             compiled: Kind::Any {
-                index: Uniform::new(0, choices.len()),
+                index: Uniform::new(0, choices.len()).expect("choices not empty"),
                 choices,
             }
             .into(),
@@ -779,7 +779,7 @@ fn compile_unicode_class(ranges: &[hir::ClassUnicodeRange]) -> Kind {
 
     if normalized_len as usize > SHORT_UNICODE_CLASS_COUNT {
         return Kind::LongUnicodeClass(LongUnicodeClass {
-            searcher: Uniform::new(0, normalized_len),
+            searcher: Uniform::new(0, normalized_len).expect("normalized_len > 0"),
             ranges: normalized_ranges.into_boxed_slice(),
         });
     }
@@ -793,7 +793,7 @@ fn compile_unicode_class(ranges: &[hir::ClassUnicodeRange]) -> Kind {
     });
 
     Kind::ShortUnicodeClass(ShortUnicodeClass {
-        index: Uniform::new(0, cases.len()),
+        index: Uniform::new(0, cases.len()).expect("cases not empty"),
         cases: cases.into_boxed_slice(),
     })
 }
@@ -812,7 +812,7 @@ impl ByteClass {
             cases.extend(range.start()..=range.end());
         }
         Self {
-            index: Uniform::new(0, cases.len()),
+            index: Uniform::new(0, cases.len()).expect("cases not empty"),
             cases: cases.into_boxed_slice(),
         }
     }
@@ -827,7 +827,7 @@ impl Distribution<u8> for ByteClass {
 #[cfg(test)]
 mod test {
     use super::*;
-    use rand::thread_rng;
+    use rand::rng as thread_rng;
     use std::collections::HashSet;
     use std::ops::RangeInclusive;
 
@@ -993,20 +993,20 @@ mod test {
             cls.iter().map(|r| r.len()).sum()
         }
 
-        assert_eq!(count_class_chars(r"\p{L}"), 136_104);
-        assert_eq!(count_class_chars(r"\p{M}"), 2_450);
-        assert_eq!(count_class_chars(r"\p{N}"), 1_831);
-        assert_eq!(count_class_chars(r"\p{P}"), 842);
-        assert_eq!(count_class_chars(r"\p{S}"), 7_770);
+        assert_eq!(count_class_chars(r"\p{L}"), 141_028);
+        assert_eq!(count_class_chars(r"\p{M}"), 2_501);
+        assert_eq!(count_class_chars(r"\p{N}"), 1_911);
+        assert_eq!(count_class_chars(r"\p{P}"), 855);
+        assert_eq!(count_class_chars(r"\p{S}"), 8_514);
         assert_eq!(count_class_chars(r"\p{Z}"), 19);
-        assert_eq!(count_class_chars(r"\p{C}"), 965_096);
+        assert_eq!(count_class_chars(r"\p{C}"), 959_284);
 
-        assert_eq!(count_class_chars(r"\p{Latin}"), 1_481);
+        assert_eq!(count_class_chars(r"\p{Latin}"), 1_487);
         assert_eq!(count_class_chars(r"\p{Greek}"), 518);
-        assert_eq!(count_class_chars(r"\p{Cyrillic}"), 506);
+        assert_eq!(count_class_chars(r"\p{Cyrillic}"), 508);
         assert_eq!(count_class_chars(r"\p{Armenian}"), 96);
         assert_eq!(count_class_chars(r"\p{Hebrew}"), 134);
-        assert_eq!(count_class_chars(r"\p{Arabic}"), 1_368);
+        assert_eq!(count_class_chars(r"\p{Arabic}"), 1_373);
         assert_eq!(count_class_chars(r"\p{Syriac}"), 88);
         assert_eq!(count_class_chars(r"\p{Thaana}"), 50);
         assert_eq!(count_class_chars(r"\p{Devanagari}"), 164);
@@ -1018,14 +1018,14 @@ mod test {
         assert_eq!(count_class_chars(r"\p{Hangul}"), 11_739);
         assert_eq!(count_class_chars(r"\p{Hiragana}"), 381);
         assert_eq!(count_class_chars(r"\p{Katakana}"), 321);
-        assert_eq!(count_class_chars(r"\p{Han}"), 98_408);
+        assert_eq!(count_class_chars(r"\p{Han}"), 99_030);
         assert_eq!(count_class_chars(r"\p{Tagalog}"), 23);
         assert_eq!(count_class_chars(r"\p{Linear_B}"), 211);
         assert_eq!(count_class_chars(r"\p{Inherited}"), 657);
 
-        assert_eq!(count_class_chars(r"\d"), 680);
+        assert_eq!(count_class_chars(r"\d"), 760);
         assert_eq!(count_class_chars(r"\s"), 25);
-        assert_eq!(count_class_chars(r"\w"), 139_612);
+        assert_eq!(count_class_chars(r"\w"), 144_667);
     }
 
     #[test]
@@ -1062,31 +1062,31 @@ mod test {
         // [1]: https://doi.org/10.1080/00031305.2019.1699445
 
         check_str_unlimited(r"\p{L}", Encoding::Utf8, 3999);
-        check_str(r"\p{M}", Encoding::Utf8, 1918..=2450, 4096);
-        check_str(r"\p{N}", Encoding::Utf8, 1582..=1831, 4096);
-        check_str(r"\p{P}", Encoding::Utf8, 824..=842, 4096);
-        check_str_unlimited(r"\p{S}", Encoding::Utf8, 3083);
+        check_str(r"\p{M}", Encoding::Utf8, 1941..=2501, 4096);
+        check_str(r"\p{N}", Encoding::Utf8, 1630..=1911, 4096);
+        check_str(r"\p{P}", Encoding::Utf8, 835..=855, 4096);
+        check_str_unlimited(r"\p{S}", Encoding::Utf8, 3151);
         check_str_limited(r"\p{Z}", Encoding::Utf8, 19);
         check_str_unlimited(r"\p{C}", Encoding::Utf8, 4073);
 
-        check_str_unlimited(r"\P{L}", Encoding::Utf8, 4074);
+        check_str_unlimited(r"\P{L}", Encoding::Utf8, 4073);
         check_str_unlimited(r"\P{M}", Encoding::Utf8, 4075);
         check_str_unlimited(r"\P{N}", Encoding::Utf8, 4075);
         check_str_unlimited(r"\P{P}", Encoding::Utf8, 4075);
         check_str_unlimited(r"\P{S}", Encoding::Utf8, 4075);
         check_str_unlimited(r"\P{Z}", Encoding::Utf8, 4075);
-        check_str_unlimited(r"\P{C}", Encoding::Utf8, 4004);
+        check_str_unlimited(r"\P{C}", Encoding::Utf8, 4007);
     }
 
     #[test]
     #[cfg(feature = "unicode")]
     fn test_unicode_script_classes() {
-        check_str(r"\p{Latin}", Encoding::Utf8, 1348..=1481, 4096);
+        check_str(r"\p{Latin}", Encoding::Utf8, 1352..=1487, 4096);
         check_str(r"\p{Greek}", Encoding::Utf8, 516..=518, 4096);
-        check_str(r"\p{Cyrillic}", Encoding::Utf8, 504..=506, 4096);
+        check_str(r"\p{Cyrillic}", Encoding::Utf8, 506..=508, 4096);
         check_str_limited(r"\p{Armenian}", Encoding::Utf8, 96);
         check_str_limited(r"\p{Hebrew}", Encoding::Utf8, 134);
-        check_str(r"\p{Arabic}", Encoding::Utf8, 1264..=1368, 4096);
+        check_str(r"\p{Arabic}", Encoding::Utf8, 1268..=1373, 4096);
         check_str_limited(r"\p{Syriac}", Encoding::Utf8, 88);
         check_str_limited(r"\p{Thaana}", Encoding::Utf8, 50);
         check_str_limited(r"\p{Devanagari}", Encoding::Utf8, 164);

@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, Bencher, Criterion};
 use rand::{
-    distributions::{Distribution, Standard, Uniform},
+    distr::{Distribution, StandardUniform, Uniform},
     Rng, SeedableRng,
 };
 use rand_distr::Alphanumeric;
@@ -9,7 +9,7 @@ use rand_xorshift::XorShiftRng;
 
 fn alphanumeric_baseline(b: &mut Bencher<'_>) {
     let mut rng = XorShiftRng::seed_from_u64(0);
-    let count_distr = Uniform::new_inclusive(10, 20);
+    let count_distr = Uniform::new_inclusive(10, 20).expect("bruh");
     b.iter(|| {
         let count = count_distr.sample(&mut rng);
         Alphanumeric
@@ -28,7 +28,7 @@ fn alphanumeric_rand_regex(b: &mut Bencher<'_>) {
 fn all_char_baseline(b: &mut Bencher<'_>) {
     let mut rng = XorShiftRng::seed_from_u64(0);
     b.iter(|| {
-        Distribution::<char>::sample_iter(Standard, &mut rng)
+        Distribution::<char>::sample_iter(StandardUniform, &mut rng)
             .take(10)
             .collect::<String>()
     });
