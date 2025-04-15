@@ -103,11 +103,23 @@ pub enum Error {
     /// });
     /// ```
     Syntax(Box<regex_syntax::Error>),
+
+    /// The regex can never be matched, and thus it is impossible to generate
+    /// any samples from the regex.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let err = rand_regex::Regex::compile(r"[a&&b]", 100).unwrap_err();
+    /// assert_eq!(err, rand_regex::Error::Unsatisfiable);
+    /// ```
+    Unsatisfiable,
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Unsatisfiable => f.write_str("regex is unsatisfiable"),
             Self::Anchor => f.write_str("anchor is not supported"),
             Self::Syntax(e) => fmt::Display::fmt(e, f),
         }
@@ -117,6 +129,7 @@ impl fmt::Display for Error {
 impl error::Error for Error {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
+            Self::Unsatisfiable => None,
             Self::Anchor => None,
             Self::Syntax(e) => Some(e),
         }
@@ -450,8 +463,8 @@ impl Regex {
             HirKind::Capture(hir::Capture { sub, .. }) => Self::with_hir(*sub, max_repeat),
 
             HirKind::Literal(hir::Literal(bytes)) => Ok(Self::with_bytes_literal(bytes.into())),
-            HirKind::Class(hir::Class::Unicode(class)) => Ok(Self::with_unicode_class(&class)),
-            HirKind::Class(hir::Class::Bytes(class)) => Ok(Self::with_byte_class(&class)),
+            HirKind::Class(hir::Class::Unicode(class)) => Self::with_unicode_class(&class),
+            HirKind::Class(hir::Class::Bytes(class)) => Self::with_byte_class(&class),
             HirKind::Repetition(rep) => Self::with_repetition(rep, max_repeat),
             HirKind::Concat(hirs) => Self::with_sequence(hirs, max_repeat),
             HirKind::Alternation(hirs) => Self::with_choices(hirs, max_repeat),
@@ -469,28 +482,28 @@ impl Regex {
         }
     }
 
-    fn with_unicode_class(class: &ClassUnicode) -> Self {
-        if let Some(byte_class) = class.to_byte_class() {
-            Self::with_byte_class(&byte_class)
+    fn with_unicode_class(class: &ClassUnicode) -> Result<Self, Error> {
+        Ok(if let Some(byte_class) = class.to_byte_class() {
+            Self::with_byte_class(&byte_class)?
         } else {
             Self {
-                compiled: compile_unicode_class(class.ranges()).into(),
+                compiled: compile_unicode_class(class.ranges())?.into(),
                 capacity: class.maximum_len().unwrap_or(0),
                 encoding: Encoding::Utf8,
             }
-        }
+        })
     }
 
-    fn with_byte_class(class: &ClassBytes) -> Self {
-        Self {
-            compiled: Kind::ByteClass(ByteClass::compile(class.ranges())).into(),
+    fn with_byte_class(class: &ClassBytes) -> Result<Self, Error> {
+        Ok(Self {
+            compiled: Kind::ByteClass(ByteClass::compile(class.ranges())?).into(),
             capacity: 1,
             encoding: if class.is_ascii() {
                 Encoding::Ascii
             } else {
                 Encoding::Binary
             },
-        }
+        })
     }
 
     fn with_repetition(rep: Repetition, max_repeat: u32) -> Result<Self, Error> {
@@ -510,7 +523,7 @@ impl Regex {
             regex
                 .compiled
                 .repeat_ranges
-                .push(Uniform::new_inclusive(lower, upper).expect("upper >= lower"));
+                .push(Uniform::new_inclusive(lower, upper).map_err(|_| Error::Unsatisfiable)?);
         }
 
         // simplification: if the inner is an literal, replace `x{3}` by `xxx`.
@@ -602,7 +615,7 @@ impl Regex {
         }
         Ok(Self {
             compiled: Kind::Any {
-                index: Uniform::new(0, choices.len()).expect("choices not empty"),
+                index: Uniform::new(0, choices.len()).map_err(|_| Error::Unsatisfiable)?,
                 choices,
             }
             .into(),
@@ -767,7 +780,7 @@ fn compile_unicode_class_with(ranges: &[hir::ClassUnicodeRange], mut push: impl 
     }
 }
 
-fn compile_unicode_class(ranges: &[hir::ClassUnicodeRange]) -> Kind {
+fn compile_unicode_class(ranges: &[hir::ClassUnicodeRange]) -> Result<Kind, Error> {
     let mut normalized_ranges = Vec::new();
     let mut normalized_len = 0;
     compile_unicode_class_with(ranges, |start, end| {
@@ -778,10 +791,10 @@ fn compile_unicode_class(ranges: &[hir::ClassUnicodeRange]) -> Kind {
     });
 
     if normalized_len as usize > SHORT_UNICODE_CLASS_COUNT {
-        return Kind::LongUnicodeClass(LongUnicodeClass {
-            searcher: Uniform::new(0, normalized_len).expect("normalized_len > 0"),
+        return Ok(Kind::LongUnicodeClass(LongUnicodeClass {
+            searcher: Uniform::new(0, normalized_len).map_err(|_| Error::Unsatisfiable)?,
             ranges: normalized_ranges.into_boxed_slice(),
-        });
+        }));
     }
 
     // the number of cases is too small. convert into a direct search array.
@@ -792,10 +805,10 @@ fn compile_unicode_class(ranges: &[hir::ClassUnicodeRange]) -> Kind {
         }
     });
 
-    Kind::ShortUnicodeClass(ShortUnicodeClass {
-        index: Uniform::new(0, cases.len()).expect("cases not empty"),
+    Ok(Kind::ShortUnicodeClass(ShortUnicodeClass {
+        index: Uniform::new(0, cases.len()).map_err(|_| Error::Unsatisfiable)?,
         cases: cases.into_boxed_slice(),
-    })
+    }))
 }
 
 /// A compiled byte class.
@@ -806,15 +819,15 @@ struct ByteClass {
 }
 
 impl ByteClass {
-    fn compile(ranges: &[hir::ClassBytesRange]) -> Self {
+    fn compile(ranges: &[hir::ClassBytesRange]) -> Result<Self, Error> {
         let mut cases = Vec::with_capacity(256);
         for range in ranges {
             cases.extend(range.start()..=range.end());
         }
-        Self {
-            index: Uniform::new(0, cases.len()).expect("cases not empty"),
+        Ok(Self {
+            index: Uniform::new(0, cases.len()).map_err(|_| Error::Unsatisfiable)?,
             cases: cases.into_boxed_slice(),
-        }
+        })
     }
 }
 
@@ -1258,5 +1271,13 @@ mod test {
 
         let mut rng = thread_rng();
         let _: String = rng.sample(&gen);
+    }
+
+    #[test]
+    fn unsatisfiable_char_class_intersection() {
+        assert!(matches!(
+            Regex::compile("[a&&b]", 100),
+            Err(Error::Unsatisfiable)
+        ));
     }
 }
