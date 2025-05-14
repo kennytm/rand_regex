@@ -1,6 +1,12 @@
 Changelog
 =========
 
+v0.18.1 (2025 May 14)
+---------------------
+
+Compiling unsatisfiable regex (e.g. empty character class `[a&&b]`) now reports
+an error rather than panicking.
+
 v0.18.0 (2025 Jan 28)
 ---------------------
 
