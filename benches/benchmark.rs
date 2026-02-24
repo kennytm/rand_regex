@@ -1,7 +1,7 @@
-use criterion::{criterion_group, criterion_main, Bencher, Criterion};
+use criterion::{Bencher, Criterion, criterion_group, criterion_main};
 use rand::{
-    distr::{Distribution, StandardUniform, Uniform},
     Rng, SeedableRng,
+    distr::{Distribution, StandardUniform, Uniform},
 };
 use rand_distr::Alphanumeric;
 use rand_regex::Regex;

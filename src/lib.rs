@@ -37,13 +37,12 @@
 #![allow(clippy::must_use_candidate)]
 
 use rand::{
-    distr::{uniform::Uniform, Distribution},
-    Rng,
-    RngExt as _,
+    Rng, RngExt as _,
+    distr::{Distribution, uniform::Uniform},
 };
 use regex_syntax::{
-    hir::{self, ClassBytes, ClassUnicode, Hir, HirKind, Repetition},
     Parser,
+    hir::{self, ClassBytes, ClassUnicode, Hir, HirKind, Repetition},
 };
 use std::{
     char,
@@ -877,7 +876,11 @@ mod test {
             pattern,
             distinct_count,
             gen_count,
-            gen_set.iter().take(10).map(|s| format!(" - {:#?}\n", s)).collect::<String>(),
+            gen_set
+                .iter()
+                .take(10)
+                .map(|s| format!(" - {:#?}\n", s))
+                .collect::<String>(),
         );
     }
 
