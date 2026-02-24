@@ -4,15 +4,15 @@
 //!
 //! ```
 //! # #[cfg(feature = "unicode")] {
-//! use rand::{SeedableRng, Rng};
+//! use rand::{SeedableRng, RngExt as _};
 //!
 //! let mut rng = rand_xorshift::XorShiftRng::from_seed(*b"The initial seed");
 //!
 //! // creates a generator for sampling strings
-//! let gen = rand_regex::Regex::compile(r"\d{4}-\d{2}-\d{2}", 100).unwrap();
+//! let grx = rand_regex::Regex::compile(r"\d{4}-\d{2}-\d{2}", 100).unwrap();
 //!
 //! // sample a few strings randomly
-//! let samples = (&mut rng).sample_iter(&gen).take(3).collect::<Vec<String>>();
+//! let samples = (&mut rng).sample_iter(&grx).take(3).collect::<Vec<String>>();
 //!
 //! // all Unicode characters are included when sampling
 //! assert_eq!(samples, vec![
@@ -24,8 +24,8 @@
 //! // you could use `regex_syntax::Hir` to include more options
 //! let mut parser = regex_syntax::ParserBuilder::new().unicode(false).build();
 //! let hir = parser.parse(r"\d{4}-\d{2}-\d{2}").unwrap();
-//! let gen = rand_regex::Regex::with_hir(hir, 100).unwrap();
-//! let samples = (&mut rng).sample_iter(&gen).take(3).collect::<Vec<String>>();
+//! let grx = rand_regex::Regex::with_hir(hir, 100).unwrap();
+//! let samples = (&mut rng).sample_iter(&grx).take(3).collect::<Vec<String>>();
 //! assert_eq!(samples, vec![
 //!     "2839-82-12".to_string(),
 //!     "2857-86-63".to_string(),
@@ -37,12 +37,12 @@
 #![allow(clippy::must_use_candidate)]
 
 use rand::{
-    distr::{uniform::Uniform, Distribution},
-    Rng,
+    Rng, RngExt as _,
+    distr::{Distribution, uniform::Uniform},
 };
 use regex_syntax::{
-    hir::{self, ClassBytes, ClassUnicode, Hir, HirKind, Repetition},
     Parser,
+    hir::{self, ClassBytes, ClassUnicode, Hir, HirKind, Repetition},
 };
 use std::{
     char,
@@ -62,8 +62,8 @@ const SHORT_UNICODE_CLASS_COUNT: usize = 64;
 /// # Examples
 ///
 /// ```
-/// let gen = rand_regex::Regex::compile(r"^.{4}\b.{4}$", 100);
-/// assert_eq!(gen.err(), Some(rand_regex::Error::Anchor));
+/// let grx = rand_regex::Regex::compile(r"^.{4}\b.{4}$", 100);
+/// assert_eq!(grx.err(), Some(rand_regex::Error::Anchor));
 /// ```
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Error {
@@ -75,15 +75,15 @@ pub enum Error {
     ///
     /// ```rust
     /// # #[cfg(feature = "unicode")] {
-    /// use rand::Rng;
+    /// use rand::RngExt as _;
     ///
     /// // create the generator without the anchor
-    /// let gen = rand_regex::Regex::compile(r".{4}.{4}", 100).unwrap();
+    /// let grx = rand_regex::Regex::compile(r".{4}.{4}", 100).unwrap();
     ///
     /// // later filter the sampled result using a regex with the anchor
     /// let filter_regex = regex::Regex::new(r"^.{4}\b.{4}$").unwrap();
-    /// let _sample = rand::thread_rng()
-    ///     .sample_iter::<String, _>(&gen)
+    /// let _sample = rand::rng()
+    ///     .sample_iter::<String, _>(&grx)
     ///     .filter(|s| filter_regex.is_match(s))
     ///     .next()
     ///     .unwrap();
@@ -96,8 +96,8 @@ pub enum Error {
     /// # Examples
     ///
     /// ```
-    /// let gen = rand_regex::Regex::compile(r"(", 100);
-    /// assert!(match gen {
+    /// let grx = rand_regex::Regex::compile(r"(", 100);
+    /// assert!(match grx {
     ///     Err(rand_regex::Error::Syntax(_)) => true,
     ///     _ => false,
     /// });
@@ -337,10 +337,10 @@ impl Default for Regex {
     /// # Examples
     ///
     /// ```
-    /// use rand::Rng;
+    /// use rand::RngExt as _;
     ///
-    /// let gen = rand_regex::Regex::default();
-    /// assert_eq!(rand::thread_rng().sample::<String, _>(&gen), "");
+    /// let grx = rand_regex::Regex::default();
+    /// assert_eq!(rand::rng().sample::<String, _>(&grx), "");
     /// ```
     #[inline]
     fn default() -> Self {
@@ -412,8 +412,8 @@ impl Regex {
     ///
     /// ```
     /// # #[cfg(feature = "unicode")] {
-    /// let gen = rand_regex::Regex::compile(r"\d{4}-\d{2}-\d{2}", 100).unwrap();
-    /// assert_eq!(gen.capacity(), 34);
+    /// let grx = rand_regex::Regex::compile(r"\d{4}-\d{2}-\d{2}", 100).unwrap();
+    /// assert_eq!(grx.capacity(), 34);
     /// // each `\d` can occupy 4 bytes
     /// # }
     /// ```
@@ -431,9 +431,9 @@ impl Regex {
     /// the `x*`, `x+` and `x{n,}` operators will become, e.g.
     ///
     /// ```
-    /// let gen = rand_regex::Regex::compile("a{4,}", 100).unwrap();
+    /// let grx = rand_regex::Regex::compile("a{4,}", 100).unwrap();
     /// // this will generate a string between 4 to 104 characters long.
-    /// assert_eq!(gen.capacity(), 104);
+    /// assert_eq!(grx.capacity(), 104);
     /// ```
     ///
     /// # Errors
@@ -851,16 +851,16 @@ mod test {
         run_count: usize,
     ) {
         let r = regex::Regex::new(pattern).unwrap();
-        let gen = Regex::compile(pattern, 100).unwrap();
-        assert!(gen.is_utf8());
-        assert_eq!(gen.encoding(), encoding);
+        let grx = Regex::compile(pattern, 100).unwrap();
+        assert!(grx.is_utf8());
+        assert_eq!(grx.encoding(), encoding);
 
         let mut rng = thread_rng();
 
         let mut gen_set = HashSet::<String>::with_capacity(run_count.min(*distinct_count.end()));
-        for res in (&gen).sample_iter(&mut rng).take(run_count) {
+        for res in (&grx).sample_iter(&mut rng).take(run_count) {
             let res: String = res;
-            assert!(res.len() <= gen.capacity());
+            assert!(res.len() <= grx.capacity());
             assert!(
                 r.is_match(&res),
                 "Wrong sample for pattern `{}`: `{}`",
@@ -876,7 +876,11 @@ mod test {
             pattern,
             distinct_count,
             gen_count,
-            gen_set.iter().take(10).map(|s| format!(" - {:#?}\n", s)).collect::<String>(),
+            gen_set
+                .iter()
+                .take(10)
+                .map(|s| format!(" - {:#?}\n", s))
+                .collect::<String>(),
         );
     }
 
@@ -1165,13 +1169,13 @@ mod test {
             .parse(PATTERN)
             .unwrap();
 
-        let gen = Regex::with_hir(hir, 100).unwrap();
-        assert_eq!(gen.capacity(), 24);
-        assert!(!gen.is_utf8());
-        assert_eq!(gen.encoding(), Encoding::Binary);
+        let grx = Regex::with_hir(hir, 100).unwrap();
+        assert_eq!(grx.capacity(), 24);
+        assert!(!grx.is_utf8());
+        assert_eq!(grx.encoding(), Encoding::Binary);
 
         let mut rng = thread_rng();
-        for res in gen.sample_iter(&mut rng).take(8192) {
+        for res in grx.sample_iter(&mut rng).take(8192) {
             let res: Vec<u8> = res;
             assert!(r.is_match(&res), "Wrong sample: {:?}, `{:?}`", r, res);
         }
@@ -1185,7 +1189,7 @@ mod test {
             .build()
             .parse(r"[\x00-\xff]{2}")
             .unwrap();
-        let gen = Regex::with_hir(hir, 100).unwrap();
+        let grx = Regex::with_hir(hir, 100).unwrap();
 
         // This pattern will produce:
         //  - 16384 ASCII patterns (128^2)
@@ -1194,7 +1198,7 @@ mod test {
 
         let mut encoding_counts = [0; 3];
         let mut rng = thread_rng();
-        for encoded_string in gen.sample_iter(&mut rng).take(8192) {
+        for encoded_string in grx.sample_iter(&mut rng).take(8192) {
             let encoded_string: EncodedString = encoded_string;
             let bytes = encoded_string.as_bytes();
             let encoding = encoded_string.encoding();
@@ -1217,7 +1221,7 @@ mod test {
 
     #[test]
     fn test_encoding_generator_2() {
-        let gen = Regex::compile(r"[\u{0}-\u{b5}]{2}", 100).unwrap();
+        let grx = Regex::compile(r"[\u{0}-\u{b5}]{2}", 100).unwrap();
 
         // This pattern will produce 32761 distinct outputs, with:
         //  - 16384 ASCII patterns
@@ -1225,7 +1229,7 @@ mod test {
 
         let mut encoding_counts = [0; 2];
         let mut rng = thread_rng();
-        for encoded_string in gen.sample_iter(&mut rng).take(8192) {
+        for encoded_string in grx.sample_iter(&mut rng).take(8192) {
             let encoded_string: EncodedString = encoded_string;
             let encoding = encoded_string.encoding();
             let string = encoded_string.as_str().unwrap();
@@ -1246,9 +1250,9 @@ mod test {
 
     #[test]
     fn test_encoding_generator_3() {
-        let gen = Regex::compile(r"[\u{0}-\u{7f}]{2}", 100).unwrap();
+        let grx = Regex::compile(r"[\u{0}-\u{7f}]{2}", 100).unwrap();
         let mut rng = thread_rng();
-        for encoded_string in gen.sample_iter(&mut rng).take(8192) {
+        for encoded_string in grx.sample_iter(&mut rng).take(8192) {
             let encoded_string: EncodedString = encoded_string;
             assert_eq!(encoded_string.encoding(), Encoding::Ascii);
             assert_eq!(String::try_from(encoded_string).unwrap().len(), 2);
@@ -1265,12 +1269,12 @@ mod test {
             .parse(r"\x88")
             .unwrap();
 
-        let gen = Regex::with_hir(hir, 100).unwrap();
-        assert!(!gen.is_utf8());
-        assert_eq!(gen.encoding(), Encoding::Binary);
+        let grx = Regex::with_hir(hir, 100).unwrap();
+        assert!(!grx.is_utf8());
+        assert_eq!(grx.encoding(), Encoding::Binary);
 
         let mut rng = thread_rng();
-        let _: String = rng.sample(&gen);
+        let _: String = rng.sample(&grx);
     }
 
     #[test]

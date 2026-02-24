@@ -16,10 +16,10 @@ use rand::{SeedableRng, Rng};
 let mut rng = rand_xorshift::XorShiftRng::from_seed(*b"The initial seed");
 
 // creates a generator for sampling strings
-let gen = rand_regex::Regex::compile(r"\d{4}-\d{2}-\d{2}", 100).unwrap();
+let grx = rand_regex::Regex::compile(r"\d{4}-\d{2}-\d{2}", 100).unwrap();
 
 // sample a few strings randomly
-let samples = (&mut rng).sample_iter(&gen).take(3).collect::<Vec<String>>();
+let samples = (&mut rng).sample_iter(&grx).take(3).collect::<Vec<String>>();
 
 // all Unicode characters are included when sampling
 assert_eq!(samples, vec![
@@ -31,8 +31,8 @@ assert_eq!(samples, vec![
 // you could use `regex_syntax::Hir` to include more options
 let mut parser = regex_syntax::ParserBuilder::new().unicode(false).build();
 let hir = parser.parse(r"\d{4}-\d{2}-\d{2}").unwrap();
-let gen = rand_regex::Regex::with_hir(hir, 100).unwrap();
-let samples = (&mut rng).sample_iter(&gen).take(3).collect::<Vec<String>>();
+let grx = rand_regex::Regex::with_hir(hir, 100).unwrap();
+let samples = (&mut rng).sample_iter(&grx).take(3).collect::<Vec<String>>();
 assert_eq!(samples, vec![
     "2839-82-12".to_string(),
     "2857-86-63".to_string(),
