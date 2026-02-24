@@ -1,4 +1,4 @@
-use rand::Rng;
+use rand::RngExt as _;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pattern = std::env::args().nth(1).expect("give me a regex pattern");

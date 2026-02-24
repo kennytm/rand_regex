@@ -4,7 +4,7 @@
 //!
 //! ```
 //! # #[cfg(feature = "unicode")] {
-//! use rand::{SeedableRng, Rng};
+//! use rand::{SeedableRng, RngExt as _};
 //!
 //! let mut rng = rand_xorshift::XorShiftRng::from_seed(*b"The initial seed");
 //!
@@ -39,6 +39,7 @@
 use rand::{
     distr::{uniform::Uniform, Distribution},
     Rng,
+    RngExt as _,
 };
 use regex_syntax::{
     hir::{self, ClassBytes, ClassUnicode, Hir, HirKind, Repetition},
@@ -75,14 +76,14 @@ pub enum Error {
     ///
     /// ```rust
     /// # #[cfg(feature = "unicode")] {
-    /// use rand::Rng;
+    /// use rand::RngExt as _;
     ///
     /// // create the generator without the anchor
     /// let gen = rand_regex::Regex::compile(r".{4}.{4}", 100).unwrap();
     ///
     /// // later filter the sampled result using a regex with the anchor
     /// let filter_regex = regex::Regex::new(r"^.{4}\b.{4}$").unwrap();
-    /// let _sample = rand::thread_rng()
+    /// let _sample = rand::rng()
     ///     .sample_iter::<String, _>(&gen)
     ///     .filter(|s| filter_regex.is_match(s))
     ///     .next()
@@ -337,10 +338,10 @@ impl Default for Regex {
     /// # Examples
     ///
     /// ```
-    /// use rand::Rng;
+    /// use rand::RngExt as _;
     ///
     /// let gen = rand_regex::Regex::default();
-    /// assert_eq!(rand::thread_rng().sample::<String, _>(&gen), "");
+    /// assert_eq!(rand::rng().sample::<String, _>(&gen), "");
     /// ```
     #[inline]
     fn default() -> Self {
